@@ -1,0 +1,15 @@
+# js_predict_poc/ の数値パリティテスト依存(jsdom)。package.jsonからCIが復元する。
+js_predict_poc/node_modules/
+
+# 検証用にビルドしたLinux向けC++参照実装バイナリ(配布物には含めない。手元で
+# g++ -O2 -std=c++17 ../../native_predictor/predict_native_v2.cpp -o predict_native_ref で再生成)
+js_predict_poc/predict_native_ref
+
+# train_bridge.py の動作確認で生成される一時学習出力(ユーザーデータを含むため追跡しない)
+py/trained_model_tmp/
+
+# index.html / offline.html (frontend/index.html から `node build_frontend.mjs` で再生成可能)
+# offline-embed.js (vendor/pyodide/ + py/ から `node build_offline.mjs` で再生成可能)
+# は配布物としてそのままダウンロード・閲覧できるよう、あえてリポジトリに含めている
+# (2026-07〜)。frontend/index.html や web/py/*.py / predict_template.html を変更したら、
+# 両ビルドスクリプトを再実行してから再コミットすること。

@@ -1,0 +1,826 @@
+<!DOCTYPE html>
+<!--
+  T-regressor 予測ツール(単体HTML版)
+  ------------------------------------------------------------
+  このファイルは「学習済みモデルのDL」から書き出された、学習済みモデル1個ぶんの
+  予測専用ツールです。ネットワーク接続やインストールは不要で、このHTMLファイルを
+  ダブルクリックしてブラウザで開くだけで動作します。予測はすべてブラウザ内で
+  完結し、CSVの内容がどこかに送信されることはありません。
+
+  生成元テンプレート: web/predict_template.html
+  埋め込みモデル形式: .treg (T-regressor 独自のコンパクトバイナリ形式)
+  推論ロジック: web/js_predict_poc/predict-core.js と同一(数値的に検証済み)
+-->
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>T-regressor 予測ツール</title>
+<style>
+    :root {
+        --font-display: 'Segoe UI', 'Yu Gothic UI', sans-serif;
+        --font-mono: 'Consolas', 'IBM Plex Mono', monospace;
+        --font-body: 'Yu Gothic UI', 'Segoe UI', -apple-system, BlinkMacSystemFont, sans-serif;
+        --ink: #eef3fa; --ink-dim: #92a2b8; --ink-faint: #4a5872;
+        --cyan: #3fc4ec; --cyan-deep: #1c6e91;
+        --good: #2fd68e; --good-deep: #0f7a52;
+        --gold: #f0a94e;
+        --bad: #ef5c5c; --bad-deep: #8f2e2e;
+        --panel: #0b1220; --panel-2: #0e1626; --line: rgba(63,196,236,0.18);
+    }
+    * { box-sizing: border-box; }
+    body {
+        margin: 0; min-height: 100vh; padding: 32px 20px 60px;
+        font-family: var(--font-body); color: var(--ink);
+        background: radial-gradient(ellipse at top, #0d1626 0%, #05070c 60%, #020305 100%);
+    }
+    .wrap { max-width: 860px; margin: 0 auto; }
+    h1 {
+        font-family: var(--font-display); font-size: 20px; letter-spacing: 0.5px;
+        margin: 0 0 4px; color: var(--ink);
+    }
+    .subtitle { color: var(--ink-dim); font-size: 13px; margin: 0 0 24px; line-height: 1.6; }
+    .badge {
+        display: inline-block; font-family: var(--font-mono); font-size: 11.5px;
+        padding: 2px 8px; border-radius: 4px; margin-right: 6px; margin-bottom: 2px;
+        border: 1px solid var(--line); background: rgba(63,196,236,0.08); color: var(--cyan);
+    }
+    .panel {
+        background: linear-gradient(180deg, var(--panel-2), var(--panel));
+        border: 1px solid var(--line); border-radius: 10px; padding: 18px 20px; margin-bottom: 18px;
+    }
+    .panel h2 {
+        font-family: var(--font-display); font-size: 13px; letter-spacing: 0.6px;
+        text-transform: uppercase; color: var(--ink-dim); margin: 0 0 12px;
+    }
+    .model-info-grid {
+        display: grid; grid-template-columns: auto 1fr; gap: 6px 14px;
+        font-size: 13px; font-family: var(--font-mono);
+    }
+    .model-info-grid dt { color: var(--ink-faint); }
+    .model-info-grid dd { margin: 0; color: var(--ink); word-break: break-all; }
+
+    .drop-zone {
+        border: 2px dashed rgba(63,196,236,0.35); border-radius: 10px;
+        padding: 36px 20px; text-align: center; cursor: pointer;
+        background: rgba(63,196,236,0.04); transition: background 0.15s, border-color 0.15s;
+    }
+    .drop-zone:hover, .drop-zone.hover { background: rgba(63,196,236,0.1); border-color: var(--cyan); }
+    .drop-zone.disabled { opacity: 0.45; cursor: not-allowed; }
+    .drop-zone-title { font-size: 14.5px; font-weight: 600; color: var(--ink); margin-bottom: 4px; }
+    .drop-zone-hint { font-size: 12px; color: var(--ink-dim); }
+
+    .status-line { display: flex; align-items: center; gap: 8px; font-size: 13px; margin-top: 12px; min-height: 18px; }
+    .status-line.ok { color: var(--good); }
+    .status-line.err { color: var(--bad); }
+    .status-line.busy { color: var(--cyan); }
+
+    .warn-box {
+        border: 1px solid rgba(240,169,78,0.4); background: rgba(240,169,78,0.08);
+        color: #f0c98a; border-radius: 8px; padding: 10px 14px; font-size: 12.5px;
+        line-height: 1.6; margin-top: 12px; display: none;
+    }
+    .err-box {
+        border: 1px solid rgba(239,92,92,0.4); background: rgba(239,92,92,0.08);
+        color: #f7a6a6; border-radius: 8px; padding: 10px 14px; font-size: 12.5px;
+        line-height: 1.6; margin-top: 12px; display: none;
+    }
+
+    .result-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; flex-wrap: wrap; gap: 10px; }
+    .result-count { font-family: var(--font-mono); font-size: 12.5px; color: var(--ink-dim); }
+    .btn {
+        font-family: var(--font-display); font-size: 13px; font-weight: 600; letter-spacing: 0.3px;
+        padding: 10px 20px; border-radius: 6px; border: 1px solid #ffd699; cursor: pointer;
+        color: #201203; background: linear-gradient(135deg, #f6bd6d, var(--gold));
+        box-shadow: 0 0 10px rgba(240,169,78,0.3);
+    }
+    .btn:hover { filter: brightness(1.06); }
+    .btn:disabled { opacity: 0.4; cursor: not-allowed; box-shadow: none; }
+
+    .table-wrap { max-height: 420px; overflow: auto; border: 1px solid var(--line); border-radius: 8px; }
+    table { border-collapse: collapse; width: 100%; font-family: var(--font-mono); font-size: 12px; }
+    thead th {
+        position: sticky; top: 0; background: #0c1424; text-align: left; padding: 7px 10px;
+        color: var(--ink-dim); border-bottom: 1px solid var(--line); white-space: nowrap;
+    }
+    tbody td { padding: 6px 10px; border-bottom: 1px solid rgba(255,255,255,0.04); white-space: nowrap; color: var(--ink); }
+    tbody tr:hover td { background: rgba(63,196,236,0.04); }
+    td.target-col, th.target-col { color: var(--good); font-weight: 600; }
+    .preview-note { font-size: 11.5px; color: var(--ink-faint); margin-top: 8px; }
+
+    footer { text-align: center; color: var(--ink-faint); font-size: 11.5px; margin-top: 28px; line-height: 1.8; }
+    footer a { color: var(--cyan); }
+    #fileInput { display: none; }
+</style>
+</head>
+<body>
+<div class="wrap">
+    <h1>T-regressor 予測ツール</h1>
+    <p class="subtitle">
+        <span class="badge">オフライン動作</span><span class="badge">データ送信なし</span><span class="badge">単体HTML</span><br>
+        学習済みモデルが1個、このファイルに埋め込まれています。CSVをドロップすると、
+        このブラウザの中だけで予測を計算します(サーバーへの通信は一切発生しません)。
+    </p>
+
+    <div class="panel" id="modelInfoPanel">
+        <h2>埋め込みモデル情報</h2>
+        <dl class="model-info-grid" id="modelInfoGrid">
+            <dt>状態</dt><dd id="modelStateText">読み込み中…</dd>
+        </dl>
+    </div>
+
+    <div class="panel">
+        <h2>1. 予測したいCSVを読み込む</h2>
+        <div id="dropZone" class="drop-zone disabled">
+            <div class="drop-zone-title">↓ CSVをドラッグ&ドロップ、またはクリックして選択</div>
+            <div class="drop-zone-hint" id="dropHint">モデルの読み込みを待っています…</div>
+        </div>
+        <input type="file" id="fileInput" accept=".csv,text/csv">
+        <div class="status-line" id="statusLine"></div>
+        <div class="warn-box" id="warnBox"></div>
+        <div class="err-box" id="errBox"></div>
+    </div>
+
+    <div class="panel" id="resultPanel" style="display:none;">
+        <h2>2. 予測結果</h2>
+        <div class="result-header">
+            <span class="result-count" id="resultCount"></span>
+            <button class="btn" id="downloadBtn">予測結果CSVをダウンロード</button>
+        </div>
+        <div class="table-wrap">
+            <table>
+                <thead id="previewHead"></thead>
+                <tbody id="previewBody"></tbody>
+            </table>
+        </div>
+        <div class="preview-note" id="previewNote"></div>
+    </div>
+
+    <footer>
+        T-regressor で学習したモデルを、インストール不要の単体ファイルとして書き出したものです。<br>
+        このファイル単体を配布・保存しても、埋め込みモデルによる予測機能は失われません。
+    </footer>
+</div>
+
+<script>
+"use strict";
+/* ============================================================
+ * 1. predict-core.js 相当の推論エンジン(このファイルに直接インライン化)
+ *    ロジックは web/js_predict_poc/predict-core.js と同一。
+ *    数値一致は同フォルダの run_matrix_test.js (40設定 x 302行、全PASS)
+ *    および run_parity.js (C++参照実装との突合せ)で検証済み。
+ *    変更する場合は predict-core.js 側にも反映し、再検証すること。
+ * ============================================================ */
+const MT_LINEAR = 0, MT_LGBM = 1, MT_GP = 2, MT_MLP = 3, MT_LINEAR_POLY = 4, MT_BLEND = 5;
+const YT_NONE = 0, YT_LOG1P = 1, YT_YEO_JOHNSON = 2;
+const DOP_MUL = 0, DOP_SQ = 1, DOP_SIGN = 2;
+
+class Reader {
+    constructor(buf) {
+        this.dv = new DataView(buf);
+        this.pos = 0;
+        this.size = buf.byteLength;
+        this.fail = false;
+    }
+    ok() { return !this.fail && this.pos <= this.size; }
+    u8()  { return this._num(1, (o) => this.dv.getUint8(o)); }
+    i32() { return this._num(4, (o) => this.dv.getInt32(o, true)); }
+    u32() { return this._num(4, (o) => this.dv.getUint32(o, true)); }
+    f32() { return this._num(4, (o) => this.dv.getFloat32(o, true)); }
+    f64() { return this._num(8, (o) => this.dv.getFloat64(o, true)); }
+    _num(n, fn) {
+        if (this.fail || this.pos + n > this.size) { this.fail = true; return 0; }
+        const v = fn(this.pos);
+        this.pos += n;
+        return v;
+    }
+    str() {
+        const len = this._num(2, (o) => this.dv.getUint16(o, true));
+        if (this.fail || this.pos + len > this.size) { this.fail = true; return ""; }
+        const bytes = new Uint8Array(this.dv.buffer, this.dv.byteOffset + this.pos, len);
+        this.pos += len;
+        return new TextDecoder("utf-8").decode(bytes);
+    }
+    floats(n) {
+        if (this.fail || n > 1e8 || this.pos + n * 4 > this.size) { this.fail = true; return new Float32Array(0); }
+        const out = new Float32Array(n);
+        for (let i = 0; i < n; i++) out[i] = this.dv.getFloat32(this.pos + i * 4, true);
+        this.pos += n * 4;
+        return out;
+    }
+    // blend(アンサンブル)の各メンバーは自己完結した入れ子 .treg ブロブとして埋め込まれて
+    // いるため、そのバイト範囲を独立した ArrayBuffer としてコピーし、loadTreg に
+    // 再帰的に渡せるようにする。
+    sliceBuffer(n) {
+        if (this.fail || n < 0 || this.pos + n > this.size) { this.fail = true; return new ArrayBuffer(0); }
+        const start = this.dv.byteOffset + this.pos;
+        const out = this.dv.buffer.slice(start, start + n);
+        this.pos += n;
+        return out;
+    }
+}
+
+function loadTreg(buf) {
+    const r = new Reader(buf);
+    if (r.size < 6) throw new Error("treg too small");
+    const magic = new TextDecoder().decode(new Uint8Array(buf, 0, 4));
+    r.pos = 4;
+    if (magic !== "TREG") throw new Error("bad magic (not a .treg file)");
+
+    const model = {
+        file_version: r.u8(),
+        type: r.u8(),
+        n_feat: r.u32(),
+        derived: [],
+        derived_idx: new Map(),
+        y_transform: YT_NONE, yeo_lambda: 1.0,
+        round_output: 0, smear: 1.0,
+        y_clip_lo: -3.4e38, y_clip_hi: 3.4e38,
+        x_clip_lo: [], x_clip_hi: [],
+        target_col: "", feat_cols: [], medians: new Map(),
+        linear: null, gp: null, mlp: null, lgbm: null,
+    };
+    const d = model.n_feat;
+    if (model.file_version > 4) throw new Error("unsupported (future) .treg version");
+    // blend(アンサンブル)は自身の直接の特徴ベクトルを持たない(各メンバーが個別に持つ)ため
+    // n_feat=0 が正当な値になる。それ以外の型は従来通り 1 以上を要求する。
+    if (d > 100000 || (model.type !== MT_BLEND && d < 1)) throw new Error("bad n_feat");
+
+    if (model.file_version >= 4) {
+        const nDerived = r.u32();
+        for (let i = 0; i < nDerived; i++) {
+            const df = {
+                op: r.u8(), name: r.str(),
+                col_a: r.str(), a_lo: r.f32(), a_hi: r.f32(),
+                col_b: r.str(), b_lo: r.f32(), b_hi: r.f32(),
+            };
+            if (r.fail || df.op > 2) throw new Error("bad derived feature block");
+            model.derived.push(df);
+            model.derived_idx.set(df.name, model.derived.length - 1);
+        }
+    }
+
+    if (model.type === MT_LGBM) {
+        const nTrees = r.u32();
+        r.u32();
+        if (r.fail || nTrees > 100000) throw new Error("bad n_trees");
+        const trees = [];
+        for (let t = 0; t < nTrees; t++) {
+            const n_leaves = r.u32();
+            if (r.fail || n_leaves < 1 || n_leaves > (1 << 20)) throw new Error("bad n_leaves");
+            const ni = n_leaves - 1;
+            const split_feature = new Uint32Array(ni);
+            for (let i = 0; i < ni; i++) split_feature[i] = r.u32();
+            const threshold = new Float32Array(ni);
+            for (let i = 0; i < ni; i++) threshold[i] = r.f32();
+            const left_child = new Int32Array(ni);
+            for (let i = 0; i < ni; i++) left_child[i] = r.i32();
+            const right_child = new Int32Array(ni);
+            for (let i = 0; i < ni; i++) right_child[i] = r.i32();
+            const leaf_value = new Float32Array(n_leaves);
+            for (let i = 0; i < n_leaves; i++) leaf_value[i] = r.f32();
+            if (r.fail) throw new Error("truncated lgbm tree data");
+            trees.push({ n_leaves, split_feature, threshold, left_child, right_child, leaf_value });
+        }
+        model.lgbm = { trees };
+    } else if (model.type === MT_LINEAR) {
+        model.linear = { mean: r.floats(d), scale: r.floats(d), coef: r.floats(d), intercept: r.f32() };
+    } else if (model.type === MT_GP) {
+        const mean = r.floats(d);
+        const scale = r.floats(d);
+        const ls = r.floats(d);
+        const sv = r.f32();
+        const y_mean = r.f32();
+        const y_std = r.f32();
+        const n_train = r.u32();
+        if (r.fail || n_train < 1 || n_train * d > 1e8) throw new Error("bad gp n_train");
+        const X_train = r.floats(n_train * d);
+        const alpha = r.floats(n_train);
+        model.gp = { n_feat: d, mean, scale, ls, sv, y_mean, y_std, n_train, X_train, alpha };
+    } else if (model.type === MT_MLP) {
+        const mean = r.floats(d);
+        const scale = r.floats(d);
+        const n_layers = r.u32();
+        if (r.fail || n_layers < 1 || n_layers > 64) throw new Error("bad mlp n_layers");
+        const layers = [];
+        for (let i = 0; i < n_layers; i++) {
+            const n_in = r.u32();
+            const n_out = r.u32();
+            const act = r.u8();
+            if (r.fail || n_in < 1 || n_out < 1 || n_in * n_out > 1e8) throw new Error("bad mlp layer dims");
+            const W = r.floats(n_in * n_out);
+            const b = r.floats(n_out);
+            layers.push({ n_in, n_out, act, W, b });
+        }
+        model.mlp = { mean, scale, layers };
+    } else if (model.type === MT_LINEAR_POLY) {
+        // poly-Ridge: RobustScaler(center/scale) → 多項式項(単項 or 標準化後の値どうしの
+        // 積/二乗) → coef_ 内積 + intercept_。項の並びは train_bridge._light.PolynomialFeatures
+        // と同一([単項(i昇順)]+[i<=jの積])で、書き出し時と同じ順に (idx_a, idx_b) を読む
+        // (idx_b<0 は「単項(s[idx_a]そのまま)」を表す)。
+        const center = r.floats(d);
+        const scale = r.floats(d);
+        const nTerms = r.u32();
+        if (r.fail || nTerms > 1000000) throw new Error("bad linear_poly n_terms");
+        const termA = new Int32Array(nTerms);
+        const termB = new Int32Array(nTerms);
+        for (let i = 0; i < nTerms; i++) {
+            termA[i] = r.i32();
+            termB[i] = r.i32();
+        }
+        const coef = r.floats(nTerms);
+        const intercept = r.f32();
+        if (r.fail) throw new Error("truncated linear_poly payload");
+        model.linearPoly = { center, scale, termA, termB, coef, intercept };
+    } else if (model.type === MT_BLEND) {
+        // 各メンバーは後処理なし(smear=1, y_clip=無制限, round無し)の自己完結した
+        // 入れ子 .treg ブロブ。loadTreg を再帰的に呼んでそれぞれ独立にパースする。
+        const nMembers = r.u32();
+        if (r.fail || nMembers > 1000) throw new Error("bad blend n_members");
+        const members = [];
+        for (let i = 0; i < nMembers; i++) {
+            const weight = r.f32();
+            const blobLen = r.u32();
+            const blobBuf = r.sliceBuffer(blobLen);
+            if (r.fail) throw new Error("truncated blend member blob");
+            members.push({ weight, model: loadTreg(blobBuf) });
+        }
+        if (members.length < 2) throw new Error("blend must have >=2 members");
+        model.blend = { members };
+    } else {
+        throw new Error(`unknown model type ${model.type}`);
+    }
+    if (r.fail) throw new Error("truncated model payload");
+
+    if (model.file_version >= 2) {
+        model.y_transform = r.u8();
+        if (model.y_transform === YT_YEO_JOHNSON) model.yeo_lambda = r.f32();
+    }
+    if (model.file_version >= 3) {
+        model.round_output = r.u8();
+        model.smear = r.f32();
+        model.y_clip_lo = r.f32();
+        model.y_clip_hi = r.f32();
+        const nClip = r.u32();
+        for (let i = 0; i < nClip; i++) {
+            model.x_clip_lo.push(r.f32());
+            model.x_clip_hi.push(r.f32());
+        }
+    }
+
+    model.target_col = r.str();
+    const nFc = r.u32();
+    if (r.fail || nFc > 100000) throw new Error("bad feat_cols count");
+    for (let i = 0; i < nFc; i++) model.feat_cols.push(r.str());
+    const nMed = r.u32();
+    if (r.fail || nMed > 100000) throw new Error("bad medians count");
+    for (let i = 0; i < nMed; i++) {
+        const col = r.str();
+        if (r.fail || r.pos + 8 > r.size) throw new Error("truncated medians");
+        model.medians.set(col, r.f64());
+    }
+    if (!r.ok()) throw new Error("treg trailing data corrupt");
+    return model;
+}
+
+function clippedSource(row, col, lo, hi) {
+    const v = row[col];
+    if (v === undefined || v === null || Number.isNaN(v)) return NaN;
+    return Math.min(Math.max(v, lo), hi);
+}
+
+function computeDerived(df, row) {
+    const a = clippedSource(row, df.col_a, df.a_lo, df.a_hi);
+    if (Number.isNaN(a)) return NaN;
+    let v;
+    if (df.op === DOP_MUL) {
+        const b = clippedSource(row, df.col_b, df.b_lo, df.b_hi);
+        if (Number.isNaN(b)) return NaN;
+        v = a * b;
+    } else if (df.op === DOP_SQ) {
+        v = a * a;
+    } else if (df.op === DOP_SIGN) {
+        v = Math.sign(a);
+    } else {
+        return NaN;
+    }
+    return Number.isFinite(v) ? v : NaN;
+}
+
+function predictLgbm(lgbmModel, x) {
+    let sum = 0.0;
+    for (const tree of lgbmModel.trees) {
+        if (tree.n_leaves === 1) { sum += tree.leaf_value[0]; continue; }
+        let node = 0;
+        for (;;) {
+            const feat = tree.split_feature[node];
+            const thr = tree.threshold[node];
+            const next = (x[feat] <= thr) ? tree.left_child[node] : tree.right_child[node];
+            if (next < 0) { sum += tree.leaf_value[-(next + 1)]; break; }
+            node = next;
+        }
+    }
+    return sum;
+}
+
+function predictLinear(m, x, d) {
+    let s = m.intercept;
+    for (let i = 0; i < d; i++) {
+        const sc = (x[i] - m.mean[i]) / (m.scale[i] + 1e-8);
+        s += m.coef[i] * sc;
+    }
+    return s;
+}
+
+function predictGp(m, x) {
+    const d = m.n_feat;
+    const xs = new Float32Array(d);
+    for (let i = 0; i < d; i++) xs[i] = (x[i] - m.mean[i]) / (m.scale[i] + 1e-8);
+    let yNorm = 0.0;
+    for (let i = 0; i < m.n_train; i++) {
+        let sq = 0.0;
+        for (let j = 0; j < d; j++) {
+            const diff = xs[j] - m.X_train[i * d + j];
+            const lsJ = m.ls[j];
+            sq += (diff / lsJ) * (diff / lsJ);
+        }
+        yNorm += m.sv * Math.exp(-0.5 * sq) * m.alpha[i];
+    }
+    return yNorm * m.y_std + m.y_mean;
+}
+
+function predictMlp(m, x, d) {
+    let h = new Float32Array(d);
+    for (let i = 0; i < d; i++) h[i] = (x[i] - m.mean[i]) / (m.scale[i] + 1e-8);
+    for (const layer of m.layers) {
+        const outV = new Float32Array(layer.n_out);
+        for (let j = 0; j < layer.n_out; j++) {
+            let val = layer.b[j];
+            for (let k = 0; k < layer.n_in; k++) val += h[k] * layer.W[k * layer.n_out + j];
+            outV[j] = val;
+        }
+        if (layer.act === 0) {
+            for (let j = 0; j < outV.length; j++) outV[j] = Math.max(0.0, outV[j]);
+        }
+        h = outV;
+    }
+    return h.length === 0 ? 0.0 : h[0];
+}
+
+function predictLinearPoly(m, x, d) {
+    const s = new Float32Array(d);
+    for (let i = 0; i < d; i++) s[i] = (x[i] - m.center[i]) / (m.scale[i] + 1e-8);
+    let sum = m.intercept;
+    const n = m.coef.length;
+    for (let t = 0; t < n; t++) {
+        const a = m.termA[t], b = m.termB[t];
+        const val = (b < 0) ? s[a] : s[a] * s[b];
+        sum += m.coef[t] * val;
+    }
+    return sum;
+}
+
+function predictBlend(blend, row) {
+    // 各メンバーは自身の型・特徴量・y変換・(後処理なしの)個別予測を完結して持つため、
+    // predictRow を再帰的に呼んで得た「実スケールの予測」を重み付き和するだけでよい。
+    // 最終的な smear/y_clip/round_output は呼び出し元の predictRow(外側モデル)側で
+    // 一度だけ適用される。
+    let sum = 0.0;
+    for (const mem of blend.members) {
+        sum += mem.weight * predictRow(mem.model, row);
+    }
+    return sum;
+}
+
+function buildFeatureVector(model, row) {
+    const d = model.feat_cols.length;
+    const x = new Float32Array(d);
+    for (let i = 0; i < d; i++) {
+        const name = model.feat_cols[i];
+        let val = NaN;
+        if (model.derived_idx.has(name)) {
+            val = computeDerived(model.derived[model.derived_idx.get(name)], row);
+        } else if (row[name] !== undefined && row[name] !== null && !Number.isNaN(row[name])) {
+            val = row[name];
+        }
+        if (Number.isNaN(val)) {
+            val = model.medians.has(name) ? model.medians.get(name) : 0.0;
+        }
+        if (i < model.x_clip_lo.length) {
+            val = Math.min(Math.max(val, model.x_clip_lo[i]), model.x_clip_hi[i]);
+        }
+        x[i] = val;
+    }
+    return x;
+}
+
+function yeoJohnsonInv(y, lam) {
+    if (y >= 0) {
+        if (Math.abs(lam) < 1e-6) return Math.expm1(y);
+        return Math.pow(lam * y + 1.0, 1.0 / lam) - 1.0;
+    } else {
+        const lam2 = 2.0 - lam;
+        if (Math.abs(lam2) < 1e-6) return 1.0 - Math.exp(-y);
+        return 1.0 - Math.pow(-lam2 * y + 1.0, 1.0 / lam2);
+    }
+}
+
+function invYTransform(pred, yt, lam) {
+    if (yt === YT_LOG1P) return Math.expm1(pred);
+    if (yt === YT_YEO_JOHNSON) return yeoJohnsonInv(pred, lam);
+    return pred;
+}
+
+function roundHalfAwayFromZero(x) {
+    return Math.sign(x) * Math.floor(Math.abs(x) + 0.5);
+}
+
+function predictRow(model, row) {
+    const x = buildFeatureVector(model, row);
+    const d = model.feat_cols.length;
+    let pred;
+    if (model.type === MT_LGBM) {
+        pred = predictLgbm(model.lgbm, x);
+    } else if (model.type === MT_LINEAR) {
+        pred = predictLinear(model.linear, x, d);
+    } else if (model.type === MT_GP) {
+        pred = predictGp(model.gp, x);
+    } else if (model.type === MT_MLP) {
+        pred = predictMlp(model.mlp, x, d);
+    } else if (model.type === MT_LINEAR_POLY) {
+        pred = predictLinearPoly(model.linearPoly, x, d);
+    } else if (model.type === MT_BLEND) {
+        pred = predictBlend(model.blend, row);
+    } else {
+        throw new Error("unknown model type");
+    }
+    pred = invYTransform(pred, model.y_transform, model.yeo_lambda);
+    pred *= model.smear;
+    pred = Math.min(Math.max(pred, model.y_clip_lo), model.y_clip_hi);
+    if (model.round_output) pred = roundHalfAwayFromZero(pred);
+    return pred;
+}
+
+const MODEL_TYPE_LABEL = { [MT_LINEAR]: "Linear (Ridge)", [MT_LGBM]: "LightGBM", [MT_GP]: "GP (ARD-RBF)", [MT_MLP]: "MLP", [MT_LINEAR_POLY]: "Linear (Ridge, poly)", [MT_BLEND]: "Blend (Ensemble)" };
+
+/* ============================================================
+ * 2. CSV パース/生成ユーティリティ(引用符・埋め込みカンマ・改行に対応)
+ * ============================================================ */
+function parseCSV(text) {
+    const rows = [];
+    let row = [];
+    let field = "";
+    let inQuotes = false;
+    let i = 0;
+    const n = text.length;
+    while (i < n) {
+        const c = text[i];
+        if (inQuotes) {
+            if (c === '"') {
+                if (text[i + 1] === '"') { field += '"'; i += 2; continue; }
+                inQuotes = false; i++; continue;
+            }
+            field += c; i++; continue;
+        }
+        if (c === '"') { inQuotes = true; i++; continue; }
+        if (c === ",") { row.push(field); field = ""; i++; continue; }
+        if (c === "\r") { i++; continue; }
+        if (c === "\n") { row.push(field); rows.push(row); row = []; field = ""; i++; continue; }
+        field += c; i++;
+    }
+    if (field.length > 0 || row.length > 0) { row.push(field); rows.push(row); }
+    while (rows.length && rows[rows.length - 1].length === 1 && rows[rows.length - 1][0] === "") rows.pop();
+    if (rows.length === 0) throw new Error("CSVが空です");
+    const headers = rows[0].map((h) => h.trim());
+    const dataRows = rows.slice(1).filter((r) => !(r.length === 1 && r[0] === ""));
+    return { headers, rows: dataRows };
+}
+
+function csvField(v) {
+    const s = v === null || v === undefined ? "" : String(v);
+    if (/[",\n\r]/.test(s)) return '"' + s.replace(/"/g, '""') + '"';
+    return s;
+}
+
+function buildCSVText(headers, rows) {
+    const lines = [headers.map(csvField).join(",")];
+    for (const r of rows) lines.push(r.map(csvField).join(","));
+    return lines.join("\r\n") + "\r\n";
+}
+
+function toNum(s) {
+    if (s === undefined || s === null) return NaN;
+    const t = String(s).trim();
+    if (t === "") return NaN;
+    const v = Number(t);
+    return Number.isFinite(v) ? v : NaN;
+}
+
+/* .treg の derived 特徴量は元の生列(col_a/col_b)から自動計算されるため、
+   CSVに実際に必要な「生の」列は feat_cols をそのまま使うのではなく、
+   derived 名を元の col_a/col_b に展開したものになる。
+   (web/py/predict_template.py の _to_raw_required と同じ考え方) */
+function rawRequiredColumns(model) {
+    const set = new Set();
+    for (const name of model.feat_cols) {
+        if (model.derived_idx.has(name)) {
+            const df = model.derived[model.derived_idx.get(name)];
+            set.add(df.col_a);
+            if (df.op === DOP_MUL) set.add(df.col_b);
+        } else {
+            set.add(name);
+        }
+    }
+    return Array.from(set);
+}
+
+/* ============================================================
+ * 3. 予測本体: ヘッダー検証(欠損は警告のみ、median補完で続行する点は
+ *    既存の Python 版 predict_template.py と同じソフトデグレード仕様) +
+ *    行ごとの予測 + 出力列の合成
+ * ============================================================ */
+function runPrediction(model, headers, dataRows) {
+    const targetCol = model.target_col;
+    const targetIdx = headers.indexOf(targetCol);
+    const outHeaders = targetIdx === -1 ? headers.concat([targetCol]) : headers.slice();
+    const outRows = new Array(dataRows.length);
+    for (let ri = 0; ri < dataRows.length; ri++) {
+        const r = dataRows[ri];
+        const rowObj = {};
+        for (let hi = 0; hi < headers.length; hi++) rowObj[headers[hi]] = toNum(r[hi]);
+        const pred = predictRow(model, rowObj);
+        const predStr = Number.isFinite(pred) ? String(pred) : "";
+        const outRow = r.slice();
+        if (targetIdx === -1) outRow.push(predStr); else outRow[targetIdx] = predStr;
+        outRows[ri] = outRow;
+    }
+    return { outHeaders, outRows, targetColIdxInOut: targetIdx === -1 ? outHeaders.length - 1 : targetIdx };
+}
+
+/* ============================================================
+ * 4. DOM配線
+ * ============================================================ */
+const TREG_BASE64 = "__TREG_BASE64__";
+const EXPORT_LABEL = "__EXPORT_LABEL__"; // 例: 生成日時やファイル名の由来(置換されなければ空表示)
+
+let MODEL = null;
+let lastResult = null; // { outHeaders, outRows, targetColIdxInOut, sourceStem }
+
+const $ = (id) => document.getElementById(id);
+const dropZone = $("dropZone"), fileInput = $("fileInput"), dropHint = $("dropHint");
+const statusLine = $("statusLine"), warnBox = $("warnBox"), errBox = $("errBox");
+const resultPanel = $("resultPanel"), resultCount = $("resultCount");
+const previewHead = $("previewHead"), previewBody = $("previewBody"), previewNote = $("previewNote");
+const downloadBtn = $("downloadBtn");
+
+function setStatus(msg, cls) {
+    statusLine.textContent = msg || "";
+    statusLine.className = "status-line" + (cls ? " " + cls : "");
+}
+function showWarn(lines) {
+    if (!lines || lines.length === 0) { warnBox.style.display = "none"; return; }
+    warnBox.innerHTML = lines.map((l) => l.replace(/&/g, "&amp;").replace(/</g, "&lt;")).join("<br>");
+    warnBox.style.display = "block";
+}
+function showErr(msg) {
+    if (!msg) { errBox.style.display = "none"; return; }
+    errBox.textContent = msg;
+    errBox.style.display = "block";
+}
+
+function base64ToArrayBuffer(b64) {
+    const bin = atob(b64);
+    const bytes = new Uint8Array(bin.length);
+    for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+    return bytes.buffer;
+}
+
+function initModel() {
+    try {
+        if (!TREG_BASE64 || TREG_BASE64.indexOf("__TREG_BASE64__") === 0) {
+            throw new Error("モデルが埋め込まれていません(テンプレートのまま開かれています)。T-regressorの「学習済みモデルのDL」から書き出したファイルを開いてください。");
+        }
+        const buf = base64ToArrayBuffer(TREG_BASE64);
+        MODEL = loadTreg(buf);
+        const grid = $("modelInfoGrid");
+        const req = rawRequiredColumns(MODEL);
+        grid.innerHTML =
+            "<dt>状態</dt><dd id=\"modelStateText\">読み込み完了</dd>" +
+            "<dt>モデル種別</dt><dd>" + (MODEL_TYPE_LABEL[MODEL.type] || ("type=" + MODEL.type)) + "</dd>" +
+            "<dt>予測対象の列名</dt><dd>" + MODEL.target_col + "</dd>" +
+            "<dt>必要な入力列(" + req.length + "件)</dt><dd>" + req.join(", ") + "</dd>" +
+            (EXPORT_LABEL && EXPORT_LABEL.indexOf("__EXPORT_LABEL__") !== 0
+                ? "<dt>書き出し情報</dt><dd>" + EXPORT_LABEL + "</dd>" : "");
+        dropZone.classList.remove("disabled");
+        dropHint.textContent = "CSVファイル(.csv)のみ対応";
+    } catch (e) {
+        $("modelStateText").textContent = "読み込み失敗";
+        showErr("モデルの読み込みに失敗しました: " + (e.message || e));
+        dropZone.classList.add("disabled");
+        dropHint.textContent = "モデルの読み込みに失敗したため使用できません";
+    }
+}
+
+function renderPreview(outHeaders, outRows, targetColIdx) {
+    previewHead.innerHTML = "<tr>" + outHeaders.map((h, i) =>
+        "<th" + (i === targetColIdx ? ' class="target-col"' : "") + ">" + h + "</th>").join("") + "</tr>";
+    const N = Math.min(outRows.length, 200);
+    let body = "";
+    for (let i = 0; i < N; i++) {
+        body += "<tr>" + outRows[i].map((v, ci) =>
+            "<td" + (ci === targetColIdx ? ' class="target-col"' : "") + ">" + (v === "" ? "" : v) + "</td>").join("") + "</tr>";
+    }
+    previewBody.innerHTML = body;
+    previewNote.textContent = outRows.length > N
+        ? `先頭${N}行のみプレビュー表示しています(全${outRows.length}行はダウンロードCSVに含まれます)。`
+        : "";
+}
+
+function handleFile(file) {
+    showErr(""); showWarn([]);
+    resultPanel.style.display = "none";
+    if (!file) return;
+    if (!/\.csv$/i.test(file.name)) {
+        showErr("CSVファイル(.csv)を選択してください: " + file.name);
+        return;
+    }
+    setStatus("読み込み中…", "busy");
+    const reader = new FileReader();
+    reader.onerror = () => { setStatus("", ""); showErr("ファイルの読み込みに失敗しました。"); };
+    reader.onload = () => {
+        try {
+            const text = reader.result;
+            const { headers, rows } = parseCSV(text);
+            if (rows.length === 0) throw new Error("データ行が0件です。");
+
+            const required = rawRequiredColumns(MODEL);
+            const missing = required.filter((c) => !headers.includes(c));
+            if (missing.length > 0) {
+                showWarn([
+                    "学習時に使われた列がCSVに見つかりません(中央値で補完して続行します):",
+                    missing.join(", "),
+                ]);
+            } else {
+                showWarn([]);
+            }
+
+            const t0 = performance.now();
+            const { outHeaders, outRows, targetColIdxInOut } = runPrediction(MODEL, headers, rows);
+            const ms = (performance.now() - t0).toFixed(1);
+
+            lastResult = { outHeaders, outRows, targetColIdxInOut, sourceStem: file.name.replace(/\.csv$/i, "") };
+            renderPreview(outHeaders, outRows, targetColIdxInOut);
+            resultCount.textContent = `${outRows.length}行を予測しました(${ms} ms)`;
+            resultPanel.style.display = "block";
+            setStatus(`完了: ${file.name}`, "ok");
+        } catch (e) {
+            setStatus("", "");
+            showErr("予測に失敗しました: " + (e.message || e));
+        }
+    };
+    reader.readAsText(file, "utf-8");
+}
+
+downloadBtn.addEventListener("click", () => {
+    if (!lastResult) return;
+    const csvText = buildCSVText(lastResult.outHeaders, lastResult.outRows);
+    const blob = new Blob(["﻿" + csvText], { type: "text/csv;charset=utf-8" });
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    a.download = lastResult.sourceStem + "_predicted.csv";
+    a.click();
+    URL.revokeObjectURL(a.href);
+});
+
+dropZone.addEventListener("click", () => { if (!dropZone.classList.contains("disabled")) fileInput.click(); });
+fileInput.addEventListener("change", () => { if (fileInput.files[0]) handleFile(fileInput.files[0]); fileInput.value = ""; });
+["dragenter", "dragover"].forEach((evt) => dropZone.addEventListener(evt, (e) => {
+    e.preventDefault();
+    if (!dropZone.classList.contains("disabled")) dropZone.classList.add("hover");
+}));
+["dragleave", "drop"].forEach((evt) => dropZone.addEventListener(evt, (e) => {
+    e.preventDefault();
+    dropZone.classList.remove("hover");
+}));
+dropZone.addEventListener("drop", (e) => {
+    if (dropZone.classList.contains("disabled")) return;
+    const file = e.dataTransfer.files && e.dataTransfer.files[0];
+    if (file) handleFile(file);
+});
+
+initModel();
+
+// テスト用フック(本番動作には影響しない小さなグローバル1個。jsdom等からの検証用)
+if (typeof window !== "undefined") {
+    window.__T_PREDICT_TEST__ = {
+        parseCSV, buildCSVText, toNum, rawRequiredColumns, runPrediction, loadTreg, predictRow,
+        handleFile, getModel: () => MODEL, getLastResult: () => lastResult,
+    };
+}
+// Node.js から直接 require された場合(ブラウザでは到達しない)
+if (typeof module !== "undefined" && module.exports) {
+    module.exports = { parseCSV, buildCSVText, toNum, rawRequiredColumns, runPrediction, loadTreg, predictRow };
+}
+</script>
+</body>
+</html>

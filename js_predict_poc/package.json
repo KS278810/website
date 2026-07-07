@@ -1,0 +1,14 @@
+{
+  "name": "treg-predict-parity-tests",
+  "private": true,
+  "version": "1.0.0",
+  "description": "T-regressor 予測ロジックの数値パリティ検証(JS版 predict-core.js / predict_template.html と C++参照実装の突合せ)。予測ロジックに触れる変更をした場合は npm test を必ず通すこと。CI(.github/workflows/predict-parity.yml)からも実行される。",
+  "scripts": {
+    "test": "node run_matrix_test.js && node run_parity.js && node run_html_matrix_test.js",
+    "test:core": "node run_matrix_test.js && node run_parity.js",
+    "test:html": "node run_html_matrix_test.js"
+  },
+  "devDependencies": {
+    "jsdom": "^24.1.0"
+  }
+}
