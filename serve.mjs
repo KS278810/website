@@ -19,7 +19,13 @@ http.createServer((req, res) => {
   let p = decodeURIComponent(req.url.split("?")[0]);
   if (p === "/") p = "/index.html";
   const file = path.join(DIR, p);
-  if (!file.startsWith(DIR) || !fs.existsSync(file) || fs.statSync(file).isDirectory()) {
+  // 低-M21: file.startsWith(DIR) は区切り文字を見ないため、DIR="/foo/bar" のとき
+  // 兄弟ディレクトリ "/foo/bar-secret/x" のような文字列も「startsWith(DIR)」を
+  // 満たしてしまい、path.join由来の ".." 正規化と組み合わさるとDIR外への読み出しを
+  // 防ぎきれない。path.relative で実際に外側に出ていないかを確認する。
+  const rel = path.relative(DIR, file);
+  const isInside = rel === "" || (!rel.startsWith("..") && !path.isAbsolute(rel));
+  if (!isInside || !fs.existsSync(file) || fs.statSync(file).isDirectory()) {
     res.writeHead(404); res.end("404"); return;
   }
   res.writeHead(200, {
@@ -29,4 +35,8 @@ http.createServer((req, res) => {
     "Cross-Origin-Resource-Policy": "cross-origin",
   });
   fs.createReadStream(file).pipe(res);
-}).listen(PORT, () => console.log(`T-regressor web → http://localhost:${PORT}`));
+// 低-M21: 引数なしlisten(PORT)はデフォルトで全インターフェース(0.0.0.0)にbindされ、
+// 「ローカル動作確認用」の想定に反して同一LAN内の他端末からも到達可能になる。
+// ローカルホストのみに明示的にbindする(外部公開したい場合はHOST環境変数で上書き可能)。
+}).listen(PORT, process.env.HOST || "127.0.0.1",
+  () => console.log(`T-regressor web → http://localhost:${PORT}`));
