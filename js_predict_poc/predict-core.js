@@ -48,7 +48,12 @@ class Reader {
     }
 }
 
-function loadTreg(buf) {
+// depth: blend入れ子の再帰段数。現行の writer(train_bridge._write_treg_stream)は
+// blendメンバーを常に「非blendの自己完結モデル」として書き出し、blendの入れ子
+// (blendの中にblend)は生成しない。depth>1を拒否しないと、細工された.tregで
+// 数万段の再帰によりスタックオーバーフローを起こせてしまう(中-M1)。
+function loadTreg(buf, depth = 0) {
+    if (depth > 1) throw new Error("blend nesting too deep (max 1 level)");
     const r = new Reader(buf);
     if (r.size < 6) throw new Error("treg too small");
     const magic = new TextDecoder().decode(new Uint8Array(buf, 0, 4));
@@ -108,6 +113,14 @@ function loadTreg(buf) {
             const leaf_value = new Float32Array(n_leaves);
             for (let i = 0; i < n_leaves; i++) leaf_value[i] = r.f32();
             if (r.fail) throw new Error("truncated lgbm tree data");
+            // 整合性検査(重大-1): split_feature は特徴量次元内、left/right_child は
+            // 「葉」(負値、-n_leaves以上)か「内部ノード」(0以上ni未満)のいずれかで
+            // なければならない(C++版 predict_native_v2.cpp load_treg と同一検査)。
+            for (let i = 0; i < ni; i++) {
+                if (split_feature[i] >= d) throw new Error("lgbm split_feature out of range");
+                if (left_child[i] < -n_leaves || left_child[i] >= ni) throw new Error("lgbm left_child out of range");
+                if (right_child[i] < -n_leaves || right_child[i] >= ni) throw new Error("lgbm right_child out of range");
+            }
             trees.push({ n_leaves, split_feature, threshold, left_child, right_child, leaf_value });
         }
         model.lgbm = { trees };
@@ -140,6 +153,12 @@ function loadTreg(buf) {
             const b = r.floats(n_out);
             layers.push({ n_in, n_out, act, W, b });
         }
+        // 整合性検査(重大-1): 層の次元チェーンが破綻していると predictMlp() の
+        // W[k*n_out+j] が範囲外読み出しになる(C++版と同一検査)。
+        if (layers.length === 0 || layers[0].n_in !== d) throw new Error("mlp layer[0].n_in != n_feat");
+        for (let li = 1; li < layers.length; li++) {
+            if (layers[li].n_in !== layers[li - 1].n_out) throw new Error("mlp layer dim chain broken");
+        }
         model.mlp = { mean, scale, layers };
     } else if (model.type === MT_LINEAR_POLY) {
         // poly-Ridge: RobustScaler(center/scale) → 多項式項(単項 or 標準化後の値どうしの
@@ -171,7 +190,7 @@ function loadTreg(buf) {
             const blobLen = r.u32();
             const blobBuf = r.sliceBuffer(blobLen);
             if (r.fail) throw new Error("truncated blend member blob");
-            members.push({ weight, model: loadTreg(blobBuf) });
+            members.push({ weight, model: loadTreg(blobBuf, depth + 1) });
         }
         if (members.length < 2) throw new Error("blend must have >=2 members");
         model.blend = { members };
@@ -200,6 +219,9 @@ function loadTreg(buf) {
     const nFc = r.u32();
     if (r.fail || nFc > 100000) throw new Error("bad feat_cols count");
     for (let i = 0; i < nFc; i++) model.feat_cols.push(r.str());
+    // 整合性検査(重大-1): ヘッダのn_featとテールのn_fc(feat_cols実個数)が食い違う
+    // 破損ファイルを拒否する(C++版 predict_native_v2.cpp load_treg と同一検査)。
+    if (model.n_feat !== nFc) throw new Error("n_feat / feat_cols count mismatch");
     const nMed = r.u32();
     if (r.fail || nMed > 100000) throw new Error("bad medians count");
     for (let i = 0; i < nMed; i++) {
@@ -240,7 +262,12 @@ function predictLgbm(lgbmModel, x) {
     for (const tree of lgbmModel.trees) {
         if (tree.n_leaves === 1) { sum += tree.leaf_value[0]; continue; }
         let node = 0;
+        // 循環参照(細工された.treg)による無限ループを防ぐため、訪問回数に上限を
+        // 設ける(重大-1、C++版 predict_lgbm と同一のガード)。
+        const maxVisits = tree.split_feature.length;  // = 内部ノード数(ni)
+        let visits = 0;
         for (;;) {
+            if (++visits > maxVisits) throw new Error("lgbm tree traversal exceeded node limit (corrupt .treg?)");
             const feat = tree.split_feature[node];
             const thr = tree.threshold[node];
             const next = (x[feat] <= thr) ? tree.left_child[node] : tree.right_child[node];
@@ -251,10 +278,13 @@ function predictLgbm(lgbmModel, x) {
     return sum;
 }
 
+// スケーラのεは.treg書き出し時に焼き込み済み(train_bridge._write_treg_stream が
+// scale=max(scale,1e-8)にしてから float32 化する。中-M3)。読み込み側は「.tregの値で
+// 割るだけ」でよく、以前のように読み込み側で +1e-8 を足す必要はない。
 function predictLinear(m, x, d) {
     let s = m.intercept;
     for (let i = 0; i < d; i++) {
-        const sc = (x[i] - m.mean[i]) / (m.scale[i] + 1e-8);
+        const sc = (x[i] - m.mean[i]) / m.scale[i];
         s += m.coef[i] * sc;
     }
     return s;
@@ -263,7 +293,7 @@ function predictLinear(m, x, d) {
 function predictGp(m, x) {
     const d = m.n_feat;
     const xs = new Float32Array(d);
-    for (let i = 0; i < d; i++) xs[i] = (x[i] - m.mean[i]) / (m.scale[i] + 1e-8);
+    for (let i = 0; i < d; i++) xs[i] = (x[i] - m.mean[i]) / m.scale[i];
     let yNorm = 0.0;
     for (let i = 0; i < m.n_train; i++) {
         let sq = 0.0;
@@ -279,7 +309,7 @@ function predictGp(m, x) {
 
 function predictMlp(m, x, d) {
     let h = new Float32Array(d);
-    for (let i = 0; i < d; i++) h[i] = (x[i] - m.mean[i]) / (m.scale[i] + 1e-8);
+    for (let i = 0; i < d; i++) h[i] = (x[i] - m.mean[i]) / m.scale[i];
     for (const layer of m.layers) {
         const outV = new Float32Array(layer.n_out);
         for (let j = 0; j < layer.n_out; j++) {
@@ -297,7 +327,7 @@ function predictMlp(m, x, d) {
 
 function predictLinearPoly(m, x, d) {
     const s = new Float32Array(d);
-    for (let i = 0; i < d; i++) s[i] = (x[i] - m.center[i]) / (m.scale[i] + 1e-8);
+    for (let i = 0; i < d; i++) s[i] = (x[i] - m.center[i]) / m.scale[i];
     let sum = m.intercept;
     const n = m.coef.length;
     for (let t = 0; t < n; t++) {
