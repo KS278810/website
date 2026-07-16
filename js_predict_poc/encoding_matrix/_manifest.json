@@ -1,0 +1,71 @@
+[
+  {
+    "name": "large_scale",
+    "csv": "large_scale.csv",
+    "treg": "large_scale.treg",
+    "encoding": "utf-8",
+    "native_supported": true,
+    "feat_cols": [
+      "big_x1",
+      "big_x2"
+    ],
+    "target_col": "target",
+    "expected": [
+      8001000.0,
+      -968134.2820000001,
+      -998999.9990000001
+    ],
+    "note": "1e6スケールの大きな値・負の大きな値で桁落ち/指数表記誤読が無いか検証"
+  },
+  {
+    "name": "cp932_japanese",
+    "csv": "cp932_japanese.csv",
+    "treg": "cp932_japanese.treg",
+    "encoding": "cp932",
+    "native_supported": false,
+    "feat_cols": [
+      "コスト",
+      "売上"
+    ],
+    "target_col": "target",
+    "expected": [
+      17.0,
+      24.0
+    ],
+    "note": "日本語Excel既定のcp932(Shift-JIS)CSV。native実装はcp932デコード非対応のためskip"
+  },
+  {
+    "name": "bom_utf8",
+    "csv": "bom_utf8.csv",
+    "treg": "bom_utf8.treg",
+    "encoding": "utf-8-sig",
+    "native_supported": true,
+    "feat_cols": [
+      "a",
+      "b"
+    ],
+    "target_col": "target",
+    "expected": [
+      12.0,
+      34.0
+    ],
+    "note": "UTF-8 BOM(EF BB BF)付きCSV。ヘッダ1文字目が誤ってBOM残骸として削られないか検証"
+  },
+  {
+    "name": "halfwidth_kana",
+    "csv": "halfwidth_kana.csv",
+    "treg": "halfwidth_kana.treg",
+    "encoding": "utf-8",
+    "native_supported": true,
+    "feat_cols": [
+      "ｺｽﾄ",
+      "１号機"
+    ],
+    "target_col": "target",
+    "expected": [
+      17.0,
+      7.0
+    ],
+    "note": "半角カナ・全角英数字混在ヘッダ。UTF-8バイト列の1バイト目がBOMと衝突するケース"
+  }
+]
