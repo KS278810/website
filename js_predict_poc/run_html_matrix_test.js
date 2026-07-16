@@ -1,5 +1,6 @@
 // run_html_matrix_test.js — 本番配布物 web/predict_template.html そのものを jsdom で
-// 実ブラウザ相当に実行し、40通りの.tregフィクスチャ x 302行のストレステストCSVで
+// 実ブラウザ相当に実行し、46通りの.tregフィクスチャ(type0〜5すべて) x 302行の
+// ストレステストCSVで
 // C++参照実装(predict_native_v2.cpp)の出力と突き合わせる。
 //
 // predict-core.js単体のテスト(run_matrix_test.js)とは別に、実際にユーザーへ配布される
@@ -56,6 +57,13 @@ window.addEventListener("error", (e) => {
 
 function waitTick(ms) { return new Promise((r) => setTimeout(r, ms || 10)); }
 
+// 低-L3: run_matrix_test.js と同じ相対混合閾値(絶対1e-6下限、期待値に対し相対1e-4)。
+// 積・二乗混在のpoly項やblendの加重和等、値のスケールが大きい設定を絶対1e-4固定では
+// 誤判定しかねないため。
+function tolerance(expected) {
+    return Math.max(1e-6, 1e-4 * Math.abs(expected));
+}
+
 async function main() {
     await waitTick();
     if (pageError) throw new Error("ページ読み込み中にJSエラーが発生: " + pageError);
@@ -88,7 +96,7 @@ async function main() {
         const targetIdx = cppHeaders.indexOf(model.target_col);
         const cppPreds = cppLines.slice(1).map((line) => parseFloat(line.split(",")[targetIdx]));
 
-        let maxDiff = 0, nanMismatch = 0, worstRow = -1;
+        let maxDiff = 0, nanMismatch = 0, worstRow = -1, rowFailCount = 0;
         for (let i = 0; i < rows.length; i++) {
             const jsValStr = outRows[i][targetColIdxInOut];
             const jsP = jsValStr === "" ? NaN : parseFloat(jsValStr);
@@ -98,11 +106,14 @@ async function main() {
             if (jsIsNaN !== cppIsNaN) { nanMismatch++; continue; }
             if (jsIsNaN && cppIsNaN) continue;
             const diff = Math.abs(jsP - cppP);
+            // 低-L3: run_matrix_test.js と同じ理由でroundTrueも相対混合閾値に統一(極端な
+            // 入力値でのpoly項二乗により、丸め後も絶対差が大きくなり得るため)。
+            const tol = tolerance(cppP);
+            if (diff > tol) rowFailCount++;
             if (diff > maxDiff) { maxDiff = diff; worstRow = i; }
         }
         totalChecked += rows.length;
-        const threshold = name.includes("roundTrue") ? 1e-9 : 1e-4;
-        const pass = maxDiff < threshold && nanMismatch === 0;
+        const pass = rowFailCount === 0 && nanMismatch === 0;
         if (pass) totalPass += rows.length;
         summary.push({ name, maxDiff, nanMismatch, pass, worstRow });
         console.log(`${pass ? "PASS" : "★FAIL★"}  ${name.padEnd(30)} 最大誤差=${maxDiff.toExponential(2)}` +

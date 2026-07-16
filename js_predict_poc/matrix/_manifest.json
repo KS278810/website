@@ -38,5 +38,11 @@
   "mlp_yeo_johnson_lam0.0_roundFalse",
   "mlp_yeo_johnson_lam0.0_roundTrue",
   "mlp_yeo_johnson_lam2.0_roundFalse",
-  "mlp_yeo_johnson_lam2.0_roundTrue"
+  "mlp_yeo_johnson_lam2.0_roundTrue",
+  "linear_poly_univariate_none_roundFalse",
+  "linear_poly_mixed_log1p_roundFalse",
+  "linear_poly_derived_none_roundTrue",
+  "blend_all_types_mixed_none_roundFalse",
+  "blend_log1p_smear_round",
+  "blend_lgbm_linear_log1p_roundFalse"
 ]
