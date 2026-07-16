@@ -8,6 +8,43 @@ import numpy as np
 import pandas as pd
 
 
+# ─── CSV 読み込み（日本語Excel既定のShift-JISフォールバック） ───────────────────
+
+def _read_csv_with_encoding_fallback(csv_path):
+    """まずUTF-8として読み込みを試み、デコードできなければ Shift-JIS(cp932) として読む。
+    日本語Excelが既定で書き出すShift-JIS CSVがUTF-8として「�」化けしたまま
+    サイレントに予測が完走してしまうのを防ぐ(中-7)。
+    低-M21: 以前はUTF-8妥当性の事前検査のためファイル全体を素のバイト列として読み込み
+    (`f.read()`でメモリに全展開)、その上でさらにpandasにも読ませていたため、大きな
+    CSVで実質2回分のI/O・デコードが走っていた。pd.read_csv自体もutf-8で全文デコード
+    するので不正バイトがあれば同じくUnicodeDecodeErrorを送出する。それをそのまま
+    フォールバック判定に使えば1回の読み込みで済む。"""
+    try:
+        df = pd.read_csv(csv_path, encoding='utf-8')
+    except UnicodeDecodeError:
+        print(f"[Robot] CSVがUTF-8として不正 → Shift-JIS(cp932)として読み込みます", flush=True)
+        df = pd.read_csv(csv_path, encoding='cp932')
+    # 列選択UI（frontend/index.html・lib.rs）はヘッダの前後空白をtrimして送信するため、
+    # pandas側の列名もtrimして揃える(中-M7)。
+    df.columns = df.columns.str.strip()
+    return df
+
+
+def _sanitize_json(obj):
+    """dict/list を再帰し、非有限 float を None に置換する（train_bridge.py と同一実装）。
+    列レベルの apply では NoneがSeries再構成時にNaNへ戻ってしまう（高-M2）ため、
+    to_dict('records') 後の生の dict/list に対して再帰的に適用する。"""
+    if isinstance(obj, dict):
+        return {k: _sanitize_json(v) for k, v in obj.items()}
+    if isinstance(obj, (list, tuple)):
+        return [_sanitize_json(v) for v in obj]
+    if isinstance(obj, (float, np.floating)):
+        return float(obj) if math.isfinite(float(obj)) else None
+    if isinstance(obj, (np.integer,)):
+        return int(obj)
+    return obj
+
+
 # ─── Y 逆変換 ─────────────────────────────────────────────────────────────────
 
 def _invert_y(arr: np.ndarray, transform: str, params: dict) -> np.ndarray:
@@ -40,6 +77,19 @@ def _fill_values(fc, model_medians, impute_medians):
     return {c: model_medians.get(c, impute_medians.get(c, 0.0)) for c in fc}
 
 
+def _build_feature_matrix(df, fc, med, impute_medians):
+    """指定列を数値行列として取り出す。数値として不正な文字列(例: "12abc")が
+    混入したセルは pd.to_numeric(errors="coerce") で NaN 化してから median 補完する
+    (欠損セルと同じ経路で扱う)。以前は reindex 後にいきなり .values.astype(float) を
+    呼んでおり、そのようなセルが1つでもある列があると ValueError で予測全体が
+    クラッシュしていた。native exe は std::stod の部分パース(例: "12abc"→12として
+    使ってしまう)、Web版JSは Number() ベースで NaN 化(=本関数と同じ挙動)と、
+    実装ごとに挙動が食い違っていた(中-10)。native側もこの関数と同じ「非数値→NaN→
+    median補完」に合わせて修正済み(native_predictor/predict_native_v2.cpp)。"""
+    sub = df.reindex(columns=fc).apply(pd.to_numeric, errors="coerce")
+    return sub.fillna(_fill_values(fc, med, impute_medians)).values.astype(float)
+
+
 # ─── モデル別予測ヘルパー ──────────────────────────────────────────────────────
 
 def _load_lgbm_meta(model_dir: str):
@@ -61,7 +111,7 @@ def _predict_lgbm(df: pd.DataFrame, model_dir: str,
         med = meta.get("medians", {})
     else:
         fc, med = feat_cols, {}
-    X = df.reindex(columns=fc).fillna(_fill_values(fc, med, impute_medians)).values.astype(float)
+    X = _build_feature_matrix(df, fc, med, impute_medians)
     return _invert_y(bst.predict(X), y_transform, y_params)
 
 
@@ -72,7 +122,7 @@ def _predict_linear(df: pd.DataFrame, model_dir: str,
         d = pickle.load(f)
     fc = d["feat_cols"]
     med = d.get("medians", {})
-    X = df.reindex(columns=fc).fillna(_fill_values(fc, med, impute_medians)).values.astype(float)
+    X = _build_feature_matrix(df, fc, med, impute_medians)
     if d.get("use_poly"):
         X_s = d["scaler"].transform(X)
         return _invert_y(d["model"].predict(d["poly"].transform(X_s)), y_transform, y_params)
@@ -87,7 +137,7 @@ def _predict_gp(df: pd.DataFrame, model_dir: str,
         gp_data = pickle.load(f)
     fc = gp_data["feat_cols"]
     med = gp_data.get("medians", {})
-    X = df.reindex(columns=fc).fillna(_fill_values(fc, med, impute_medians)).values.astype(float)
+    X = _build_feature_matrix(df, fc, med, impute_medians)
     X_s = gp_data["scaler"].transform(X)
     return _invert_y(gp_data["model"].predict(X_s), y_transform, y_params)
 
@@ -99,7 +149,7 @@ def _predict_mlp(df: pd.DataFrame, model_dir: str,
         d = pickle.load(f)
     fc = d["feat_cols"]
     med = d.get("medians", {})
-    X = df.reindex(columns=fc).fillna(_fill_values(fc, med, impute_medians)).values.astype(float)
+    X = _build_feature_matrix(df, fc, med, impute_medians)
     return _invert_y(d["pipeline"].predict(X), y_transform, y_params)
 
 
@@ -116,7 +166,7 @@ def _predict_lgbm_bag(kind: str, df: pd.DataFrame, model_dir: str,
         fc = m.get("feat_cols", []); med = m.get("medians", {})
     else:
         fc, med = [], {}
-    X = df.reindex(columns=fc).fillna(_fill_values(fc, med, impute_medians)).values.astype(float)
+    X = _build_feature_matrix(df, fc, med, impute_medians)
     return _invert_y(bst.predict(X), y_transform, y_params)
 
 
@@ -290,7 +340,10 @@ if __name__ == '__main__':
     print(f"[Robot] CSV 読み込み: {os.path.basename(csv_path)}", flush=True)
 
     model_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "trained_model")
-    df        = pd.read_csv(csv_path)
+    df        = _read_csv_with_encoding_fallback(csv_path)
+    # モデル入力用の複製（カテゴリエンコード/クリップ/派生特徴はここに対して行う）。
+    # df 自体はユーザーの原本のまま保ち、出力CSVには原本＋予測列のみを書く(中-2)。
+    df_model  = df.copy()
 
     meta_path = os.path.join(model_dir, "model_meta.json")
     with open(meta_path, encoding="utf-8") as f:
@@ -309,29 +362,27 @@ if __name__ == '__main__':
     round_output = postprocess.get("round_output", False)
     print(f"[Robot] モデル: {meta.get('model_label', model_type)}", flush=True)
 
-    # カテゴリカル列エンコーディング
+    # カテゴリカル列エンコーディング（モデル入力用複製 df_model にのみ適用）
     if cat_encoders:
         for col, classes in cat_encoders.items():
-            if col in df.columns:
+            if col in df_model.columns:
                 class_to_idx = {c: i for i, c in enumerate(classes)}
-                df[col] = df[col].fillna('__NaN__').astype(str).map(
+                df_model[col] = df_model[col].fillna('__NaN__').astype(str).map(
                     lambda x, m=class_to_idx: m.get(x, 0))
         print(f"[Robot] カテゴリ列エンコード: {list(cat_encoders.keys())}", flush=True)
 
-    # X クリッピング
+    # X クリッピング（モデル入力用複製 df_model にのみ適用）
     if x_clip:
         for col, bounds in x_clip.items():
-            if col in df.columns:
+            if col in df_model.columns:
                 lo, hi = bounds[0], bounds[1]
-                df[col] = df[col].clip(lower=lo, upper=hi)
+                df_model[col] = df_model[col].clip(lower=lo, upper=hi)
 
     # 自動特徴量（学習時レシピの再計算 — clip 後の値から生成、モデル入力専用の複製に追加）
     derived_recipe = meta.get("derived_features", []) or []
     if derived_recipe:
-        df_model = _apply_derived(df, derived_recipe)
+        df_model = _apply_derived(df_model, derived_recipe)
         print(f"[Robot] 自動特徴量 {len(derived_recipe)} 本を再計算", flush=True)
-    else:
-        df_model = df
 
     # 欠損値補完テーブル（後方互換フォールバック — 各モデルの pkl medians を優先）
     impute_medians = {}
@@ -371,14 +422,14 @@ if __name__ == '__main__':
 
     in_path  = pathlib.Path(csv_path)
     out_path = in_path.parent / (in_path.stem + '_predicted' + in_path.suffix)
-    df.to_csv(str(out_path), index=False, encoding='utf-8')
+    # 日本語Excelでヘッダ文字化けしないよう BOM付きUTF-8で保存する(中-8)。
+    df.to_csv(str(out_path), index=False, encoding='utf-8-sig')
     print(f"[Robot] 保存完了: {out_path.name}", flush=True)
 
-    preview_df = df.head(500).copy()
-    for col in preview_df.select_dtypes(include='number').columns:
-        preview_df[col] = preview_df[col].apply(
-            lambda v: None if (isinstance(v, float) and (math.isnan(v) or math.isinf(v))) else v)
-    preview = preview_df.to_dict('records')
+    # NaN/Inf を含みうる object 列も preview に入るため、列dtype単位のapply（列を数値
+    # Seriesへ再強制してNoneがNaNへ戻ってしまう）ではなく、辞書化後に_sanitize_jsonで
+    # 再帰的に非有限floatをNoneへ置換する（高-M2）。
+    preview = df.head(500).to_dict('records')
 
     result = {
         "rows":         len(df),
@@ -391,5 +442,6 @@ if __name__ == '__main__':
         "output_name":  out_path.name,
         "missing_cols": missing_cols,
     }
-    print(f"PREDICT_JSON:{json.dumps(result, ensure_ascii=False, default=str)}", flush=True)
+    result = _sanitize_json(result)
+    print(f"PREDICT_JSON:{json.dumps(result, ensure_ascii=False, default=str, allow_nan=False)}", flush=True)
     print("[Robot] 完了。", flush=True)

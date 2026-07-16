@@ -673,13 +673,23 @@ const resultPanel = $("resultPanel"), resultCount = $("resultCount");
 const previewHead = $("previewHead"), previewBody = $("previewBody"), previewNote = $("previewNote");
 const downloadBtn = $("downloadBtn");
 
+// このファイルは社外へ配布される単体HTML(predict_template.html)であり、モデル情報・
+// プレビュー表はユーザーが渡したCSVの列名・値をそのまま表示する。エスケープ漏れがあると
+// 悪意あるCSV(例: 列名に <img src=x onerror=...>)経由で任意スクリプト実行が可能になる
+// (高-6)。本体側(frontend/index.html)の esc() をそのまま移植し、innerHTML へ
+// 補間する全箇所に適用する。
+function esc(s) {
+    return String(s ?? '')
+        .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+}
 function setStatus(msg, cls) {
     statusLine.textContent = msg || "";
     statusLine.className = "status-line" + (cls ? " " + cls : "");
 }
 function showWarn(lines) {
     if (!lines || lines.length === 0) { warnBox.style.display = "none"; return; }
-    warnBox.innerHTML = lines.map((l) => l.replace(/&/g, "&amp;").replace(/</g, "&lt;")).join("<br>");
+    warnBox.innerHTML = lines.map((l) => esc(l)).join("<br>");
     warnBox.style.display = "block";
 }
 function showErr(msg) {
@@ -706,11 +716,11 @@ function initModel() {
         const req = rawRequiredColumns(MODEL);
         grid.innerHTML =
             "<dt>状態</dt><dd id=\"modelStateText\">読み込み完了</dd>" +
-            "<dt>モデル種別</dt><dd>" + (MODEL_TYPE_LABEL[MODEL.type] || ("type=" + MODEL.type)) + "</dd>" +
-            "<dt>予測対象の列名</dt><dd>" + MODEL.target_col + "</dd>" +
-            "<dt>必要な入力列(" + req.length + "件)</dt><dd>" + req.join(", ") + "</dd>" +
+            "<dt>モデル種別</dt><dd>" + esc(MODEL_TYPE_LABEL[MODEL.type] || ("type=" + MODEL.type)) + "</dd>" +
+            "<dt>予測対象の列名</dt><dd>" + esc(MODEL.target_col) + "</dd>" +
+            "<dt>必要な入力列(" + req.length + "件)</dt><dd>" + esc(req.join(", ")) + "</dd>" +
             (EXPORT_LABEL && EXPORT_LABEL.indexOf("__EXPORT_LABEL__") !== 0
-                ? "<dt>書き出し情報</dt><dd>" + EXPORT_LABEL + "</dd>" : "");
+                ? "<dt>書き出し情報</dt><dd>" + esc(EXPORT_LABEL) + "</dd>" : "");
         dropZone.classList.remove("disabled");
         dropHint.textContent = "CSVファイル(.csv)のみ対応";
     } catch (e) {
@@ -723,12 +733,12 @@ function initModel() {
 
 function renderPreview(outHeaders, outRows, targetColIdx) {
     previewHead.innerHTML = "<tr>" + outHeaders.map((h, i) =>
-        "<th" + (i === targetColIdx ? ' class="target-col"' : "") + ">" + h + "</th>").join("") + "</tr>";
+        "<th" + (i === targetColIdx ? ' class="target-col"' : "") + ">" + esc(h) + "</th>").join("") + "</tr>";
     const N = Math.min(outRows.length, 200);
     let body = "";
     for (let i = 0; i < N; i++) {
         body += "<tr>" + outRows[i].map((v, ci) =>
-            "<td" + (ci === targetColIdx ? ' class="target-col"' : "") + ">" + (v === "" ? "" : v) + "</td>").join("") + "</tr>";
+            "<td" + (ci === targetColIdx ? ' class="target-col"' : "") + ">" + (v === "" ? "" : esc(v)) + "</td>").join("") + "</tr>";
     }
     previewBody.innerHTML = body;
     previewNote.textContent = outRows.length > N
@@ -749,7 +759,16 @@ function handleFile(file) {
     reader.onerror = () => { setStatus("", ""); showErr("ファイルの読み込みに失敗しました。"); };
     reader.onload = () => {
         try {
-            const text = reader.result;
+            // readAsText(file, "utf-8") 固定だと日本語Excel既定のShift-JIS(cp932) CSVが
+            // U+FFFDでサイレントに化ける(中-M4a)。UTF-8として妥当かをまず検査し、
+            // 無効ならcp932(shift_jis)としてデコードする。
+            const bytes = new Uint8Array(reader.result);
+            let text;
+            try {
+                text = new TextDecoder("utf-8", { fatal: true }).decode(bytes);
+            } catch (e) {
+                text = new TextDecoder("shift_jis").decode(bytes);
+            }
             const { headers, rows } = parseCSV(text);
             if (rows.length === 0) throw new Error("データ行が0件です。");
 
@@ -778,7 +797,7 @@ function handleFile(file) {
             showErr("予測に失敗しました: " + (e.message || e));
         }
     };
-    reader.readAsText(file, "utf-8");
+    reader.readAsArrayBuffer(file);
 }
 
 downloadBtn.addEventListener("click", () => {
@@ -807,6 +826,13 @@ dropZone.addEventListener("drop", (e) => {
     const file = e.dataTransfer.files && e.dataTransfer.files[0];
     if (file) handleFile(file);
 });
+// 低-M18: dropZone個別の e.preventDefault() だけでは、利用者がドロップ位置を
+// わずかに外した場合や disabled 状態のゾーン外にファイルを落とした場合に
+// ブラウザ既定動作(ファイルを開いて全画面遷移)が発生し、入力中のCSV結果や
+// 読み込み済みモデルの状態が失われる(frontend/index.html の中-3と同種のバグ)。
+// window レベルでも常に既定動作を止めておく。
+window.addEventListener("dragover", (e) => e.preventDefault());
+window.addEventListener("drop", (e) => e.preventDefault());
 
 initModel();
 
