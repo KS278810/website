@@ -632,6 +632,18 @@
                 </div>
                 <button class="peb-close" onclick="clearPredictError()">✕</button>
             </div>
+            <!-- 常設警告バナー: デプロイ完了/予測完了の吹き出しに詰め込むと130字切り詰めで
+                 消えてしまう注意事項(カテゴリ列非対応・配布モデルの差替・欠損列の補完)を
+                 常にここへ表示する(予測/デプロイどちらの発生源かで内容を上書きしないよう
+                 renderWarnBanner()でソースごとに管理)。 -->
+            <div id="warnBanner" class="predict-error-banner" style="display:none;" aria-live="polite">
+                <span class="peb-icon">⚠</span>
+                <div class="peb-content">
+                    <div class="peb-title">注意事項</div>
+                    <div id="warnBannerMsg" class="peb-msg"></div>
+                </div>
+                <button class="peb-close" onclick="dismissWarnBanner()">✕</button>
+            </div>
             <div class="trained-body">
                 <div class="trained-left">
                     <div class="tl-section-label">R² SCORE</div>
@@ -1565,6 +1577,29 @@
         document.getElementById('predictErrorBanner').style.display = 'none';
     }
 
+    // ── 常設警告バナー ─────────────────────────────────────────────────────────
+    // 予測完了/デプロイ完了の吹き出しは truncateChatMsg(130字)で切り詰められるため、
+    // カテゴリ列非対応・配布モデルの差替・欠損列の中央値補完といった注意事項を
+    // そこに詰め込むと「…」で消えてしまっていた(中-M4)。発生源(predict/deploy)ごとに
+    // 独立して保持し、一方をクリアしてももう一方の警告を消さないようにする。
+    const warnBannerLines = { predict: null, deploy: null };
+    function renderWarnBanner() {
+        const banner = document.getElementById('warnBanner');
+        const msgEl  = document.getElementById('warnBannerMsg');
+        const parts = [warnBannerLines.predict, warnBannerLines.deploy].filter(Boolean);
+        if (parts.length === 0) { banner.style.display = 'none'; msgEl.textContent = ''; return; }
+        msgEl.textContent = parts.join('　');
+        banner.style.display = '';
+    }
+    function setWarnBanner(source, text) {
+        warnBannerLines[source] = text || null;
+        renderWarnBanner();
+    }
+    function dismissWarnBanner() {
+        warnBannerLines.predict = null; warnBannerLines.deploy = null;
+        renderWarnBanner();
+    }
+
     function showTrainedTab(tab) {
         const featureSec = document.getElementById('featureRankSection');
         const candidatesSec = document.getElementById('candidateModelsSection');
@@ -1757,7 +1792,7 @@
         deployNote.textContent = ''; deployNote.className = 'deploy-note'; deployNote.style.color = '';
         inputNote.style.display = 'none'; inputNote.textContent = '';
         trainNote.style.display = 'none'; trainNote.textContent = '';
-        clearPredictError(); closeDetailPopup();
+        clearPredictError(); closeDetailPopup(); dismissWarnBanner();
         switchDashboard('initial');
         setRobot(gifOk, '学習データを左の枠にドロップしてね。', 'rgba(63,196,236,0.45)', true);
     }
@@ -2137,9 +2172,16 @@
         let doneMsg = result._predictedCsv
             ? `${result.rows}件を予測した！\n「CSVをDL」ボタンで保存できるよ。`
             : `${result.rows}件を予測した！\n結果はCSVファイルに保存済み。`;
+        // 中-M4: 欠損列の警告は列名が増えると簡単に130字を超え、吹き出しでは「…」に
+        // 切り詰められて内容が消えていた。常設バナーへ全文を出し、吹き出しには短い
+        // 一言だけ添える。
         if (Array.isArray(result.missing_cols) && result.missing_cols.length > 0) {
-            const shown = result.missing_cols.slice(0, 3).join(', ');
-            doneMsg += `\n⚠ 学習時の列が見つからず中央値で補完: ${shown}${result.missing_cols.length > 3 ? ' ほか' : ''}`;
+            const shown = result.missing_cols.slice(0, 3).join('、');
+            const more = result.missing_cols.length > 3 ? ' ほか' : '';
+            setWarnBanner('predict', `⚠ 学習時の列「${shown}${more}」が見つからず中央値で補完しました。予測精度が下がる場合があります。`);
+            doneMsg += `\n⚠ 注意事項は下に出してるよ。`;
+        } else {
+            setWarnBanner('predict', null);
         }
         setRobot(gifCompleted, doneMsg, 'rgba(47,214,142,0.5)', false);
     }
@@ -2219,28 +2261,34 @@
                 : '✓ 配布完了';
             deployNote.className = 'deploy-note active';
             deployNote.style.color = '#f0a94e';
-            // 吹き出しの高さ上限(150px≒文字数上限CHAT_MSG_MAX_CHARS)に収まるよう、
-            // 各パーツは短く保つ(詳細な理由はdeployNoteの常設表示に譲る)。
-            let msg = modelStrategySelect.value === 'quick' ?
-                `モデルを保存した！\nさらに上げたいならじっくりモードへ。` :
-                `モデルを保存した！`;
+            // 中-M4: 以前はモデル差替・カテゴリ列の注意を吹き出しに全文追記していたため、
+            // 高さ上限(150px≒文字数上限CHAT_MSG_MAX_CHARS=130)を超えて「…」に消えていた。
+            // 詳細は常設バナー(warnBanner)へ出し、吹き出しには短い要約だけを残す。
+            const deployWarnParts = [];
             if (substituted) {
                 const r2Str = lastResult.deployed_r2 != null ? lastResult.deployed_r2.toFixed(4) : '?';
                 // 注意: best_model表示名は同じでも(例:「Linear (Ridge)」)、多項式特徴を
                 // 使った設定など「今回学習された条件」次第で配布可否が変わる。
                 // 「このモデル種別は非対応」と断定すると誤解を招くため、条件依存の表現にする。
-                msg += `\n※今回の設定では画面表示中の${lastResult.best_model}は書き出せず、` +
-                       `${lastResult.deployed_model}(R²=${r2Str})を代わりに使用。`;
-            }
-            if (!IS_TAURI) {
-                // 単体HTMLファイルなので、ダブルクリックで開くだけで使える(ネット接続不要)。
-                // 旧exe版で必要だった「ブロック解除」操作はHTML化により不要になった。
-                msg += `\nダブルクリックで開くだけで使えるよ(ネット不要)。`;
+                deployWarnParts.push(`※今回の設定では画面表示中の${lastResult.best_model}は書き出せず、` +
+                       `${lastResult.deployed_model}(R²=${r2Str})を代わりに使用しています。`);
             }
             // 高-M1短期ガード: カテゴリ列は配布ファイルでは使えないため、デプロイ完了の
             // まさにその瞬間にも念押しする(学習直後のdataWarning見落とし対策)。
             if (Array.isArray(lastResult?.cat_columns) && lastResult.cat_columns.length > 0) {
-                msg += `\n⚠ カテゴリ列「${lastResult.cat_columns.join('、')}」はこの配布ファイルでは使えないよ(精度低下に注意)。`;
+                deployWarnParts.push(`⚠ カテゴリ列「${lastResult.cat_columns.join('、')}」はこの配布ファイルでは使えません(精度低下に注意)。`);
+            }
+            setWarnBanner('deploy', deployWarnParts.length > 0 ? deployWarnParts.join('　') : null);
+
+            let msg = deployWarnParts.length > 0
+                ? '保存した！注意事項は下に出してるよ。'
+                : (modelStrategySelect.value === 'quick'
+                    ? `モデルを保存した！\nさらに上げたいならじっくりモードへ。`
+                    : `モデルを保存した！`);
+            if (!IS_TAURI) {
+                // 単体HTMLファイルなので、ダブルクリックで開くだけで使える(ネット接続不要)。
+                // 旧exe版で必要だった「ブロック解除」操作はHTML化により不要になった。
+                msg += `\nダブルクリックで開くだけで使えるよ(ネット不要)。`;
             }
             setRobot(gifCompleted, msg, 'rgba(240,169,78,0.6)', false);
         } catch (e) {
