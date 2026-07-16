@@ -16,7 +16,12 @@ def r2_score(y_true, y_pred):
     ss_res = float(np.sum((y_true - y_pred) ** 2))
     mu = float(y_true.mean())
     ss_tot = float(np.sum((y_true - mu) ** 2))
-    return 1.0 - ss_res / ss_tot if ss_tot > 0 else 0.0
+    if ss_tot > 0:
+        return 1.0 - ss_res / ss_tot
+    # y_true が定数(分散0)の場合、sklearn.metrics.r2_score は「完全一致(ss_res==0)なら1.0、
+    # そうでなければ0.0」という規約を採る(低-2)。以前は分散0なら常に0.0を返しており、
+    # 定数yを完璧に予測できたケースまで0.0と報告してしまっていた。
+    return 1.0 if ss_res == 0 else 0.0
 
 
 def mean_squared_error(y_true, y_pred):
@@ -153,6 +158,16 @@ class RidgeCV:
         X = np.asarray(X, float); y = np.asarray(y, float)
         n = len(y)
         k = min(self.cv, n)
+        if k < 2:
+            # n==1(またはcv<2指定)ではCVが組めない(k=1だと「自分以外のfold」が空になり
+            # np.concatenate([])がValueErrorになっていた、低-M11)。CV自体が無意味なため
+            # 交差検証はスキップし、alphaグリッドの先頭値で全データに直接fitする。
+            best_a = self.alphas[0]
+            W, mx, my = self._fit_alpha(X, y, best_a)
+            self.coef_ = W
+            self.intercept_ = float(my - mx @ W)
+            self.alpha_ = float(best_a)
+            return self
         idx = np.random.RandomState(42).permutation(n)
         folds = np.array_split(idx, k)
         best_a, best_mse = self.alphas[0], np.inf
@@ -204,8 +219,11 @@ class PowerTransformer:
         return -llf
 
     def _optimize_lambda(self, x):
-        # 黄金分割探索 [-2, 2]（sklearn は scipy.brent。結果は近接）
-        lo, hi = -2.0, 2.0
+        # 黄金分割探索 [-5, 5]（sklearn は scipy.brent(brack=(-2,2))だが、brackは初期
+        # 探索点でしかなくbrentは尤度が下がり続ける限りその外側まで探索を広げる。
+        # 固定で[-2,2]に打ち切っていると、極端に歪んだ分布で最適λがその外側にある場合に
+        # 準最適な変換で妥協してしまう(低-1)。[-5,5]は実用上ほぼ全ての分布を覆う範囲。
+        lo, hi = -5.0, 5.0
         gr = (np.sqrt(5) - 1) / 2
         c = hi - gr * (hi - lo); d = lo + gr * (hi - lo)
         fc = self._neg_llf(c, x); fd = self._neg_llf(d, x)
@@ -471,8 +489,18 @@ class LightGP:
         return self
 
     def predict(self, X):
-        Ks = self.sigma_var * _gp_rbf(np.asarray(X, float), self.X_train_, self.length_scale)
-        return (Ks @ self.alpha_) * self.y_std_ + self.y_mean_
+        X = np.asarray(X, float)
+        n_pred = len(X)
+        CHUNK = 2000
+        if n_pred <= CHUNK:
+            Ks = self.sigma_var * _gp_rbf(X, self.X_train_, self.length_scale)
+            return (Ks @ self.alpha_) * self.y_std_ + self.y_mean_
+        out = np.empty(n_pred, dtype=float)
+        for start in range(0, n_pred, CHUNK):
+            end = min(start + CHUNK, n_pred)
+            Ks = self.sigma_var * _gp_rbf(X[start:end], self.X_train_, self.length_scale)
+            out[start:end] = (Ks @ self.alpha_) * self.y_std_ + self.y_mean_
+        return out
 
 
 def nnls(A, b, max_iter=None):
@@ -484,7 +512,13 @@ def nnls(A, b, max_iter=None):
     x = np.zeros(n); P = np.zeros(n, bool)
     w = A.T @ (b - A @ x)
     it = 0
-    while (not P.all()) and ((~P).any() and w[~P].max() > 1e-10):
+    # 収束判定は絶対許容誤差1e-10だと、yのスケールが小さい(~1e-6等)場合にw自体が
+    # 常にその近傍になり実質手前で収束扱いになって、本来入るべきBlendメンバーが
+    # 脱落することがあった(低-M10)。A.T@bのスケールに対する相対許容誤差にする
+    # (下限を1.0にすると逆に小スケール側でtolが相対的に大きくなり元のバグが再発する
+    # ため、下限は「完全ゼロ割回避」のごく小さい値のみに留める)。
+    tol = 1e-10 * max(float(np.abs(A.T @ b).max()), 1e-300)
+    while (not P.all()) and ((~P).any() and w[~P].max() > tol):
         it += 1
         if it > max_iter:
             break
