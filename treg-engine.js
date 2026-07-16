@@ -104,8 +104,10 @@ export async function train(csvText, target, strategy, { onLog, onProgress } = {
   _pyodide.FS.writeFile("/treg/input.csv", csvText);
 
   let resultJson = null;
+  let errorLine = null;
   _pyodide.setStdout({ batched: (s) => {
     if (s.startsWith("RESULT_JSON:")) resultJson = s.slice("RESULT_JSON:".length);
+    else if (s.startsWith("ERROR:")) errorLine = s;
     _emitLine(s, onLog, onProgress);
   }});
   _pyodide.setStderr({ batched: (s) => onLog?.("[err] " + s) });
@@ -113,17 +115,34 @@ export async function train(csvText, target, strategy, { onLog, onProgress } = {
   _pyodide.globals.set("_ARG_TARGET", target ?? "");
   _pyodide.globals.set("_ARG_STRATEGY", strategy);
 
-  await _pyodide.runPythonAsync(`
+  try {
+    await _pyodide.runPythonAsync(`
 import sys, runpy, os
 os.chdir("/treg")
 sys.argv = ["train_bridge.py", "/treg/input.csv", _ARG_TARGET, "0", _ARG_STRATEGY, "1"]
 runpy.run_path("/treg/train_bridge.py", run_name="__main__")
 `);
+  } catch (e) {
+    // train_bridge.py が ERROR: を出して sys.exit(1) すると、Pyodide側の例外メッセージは
+    // "PythonError: ... SystemExit: 1" のような汎用的なものになり、原因が分からない
+    // (中-6)。捕捉していた ERROR: 行があればそちらを本来のエラーとして投げ直す
+    // (exe版の lib.rs run_train が ERROR: 行を train_error イベントにそのまま使うのと同じ扱い)。
+    if (errorLine) throw new Error(errorLine.slice("ERROR:".length).trim());
+    throw e;
+  }
 
   if (!resultJson) throw new Error("学習結果(RESULT_JSON)が取得できませんでした");
   const result = JSON.parse(resultJson);
 
-  const tregBytes = _readBytes("/treg/trained_model/model.treg");
+  // export_available=false のケース(配布可能なモデルが無い)では model.treg が
+  // 書き出されておらず読み込みに失敗する。これは学習自体の失敗ではないため、
+  // ここで throw して train() 全体を reject させず、tregBytes=null で続行する(中-5)。
+  let tregBytes = null;
+  try {
+    tregBytes = _readBytes("/treg/trained_model/model.treg");
+  } catch (e) {
+    console.warn("[TregEngine] model.treg の読み込みに失敗（配布可能なモデルなし）:", e);
+  }
   const modelZipBytes = _pyodide.runPython(`_treg_zip_dir("/treg/trained_model")`).toJs();
   return { result, tregBytes, modelZipBytes };
 }
@@ -137,22 +156,35 @@ export async function predict(csvText, { onLog } = {}) {
 
   _pyodide.FS.writeFile("/treg/pred_input.csv", csvText);
   let predJson = null;
+  let errorLine = null;
   _pyodide.setStdout({ batched: (s) => {
     if (s.startsWith("PREDICT_JSON:")) predJson = s.slice("PREDICT_JSON:".length);
+    else if (s.includes("予測エラー:")) errorLine = s;
     _emitLine(s, onLog, null);
   }});
   _pyodide.setStderr({ batched: (s) => onLog?.("[err] " + s) });
 
-  await _pyodide.runPythonAsync(`
+  try {
+    await _pyodide.runPythonAsync(`
 import sys, runpy, os
 os.chdir("/treg")
 sys.argv = ["predict_template.py", "/treg/pred_input.csv"]
 runpy.run_path("/treg/predict_template.py", run_name="__main__")
 `);
+  } catch (e) {
+    // predict_template.py が「[Robot] 予測エラー: ...」を出して sys.exit(1) すると、
+    // Pyodide側の例外メッセージは汎用的(SystemExit等)で原因が分からない(中-6)。
+    // 捕捉していたエラー行があればそちらを優先して投げ直す(train()と同じ方針)。
+    if (errorLine) throw new Error(errorLine.replace(/^\[Robot\]\s*/, ""));
+    throw e;
+  }
 
   if (!predJson) throw new Error("予測結果(PREDICT_JSON)が取得できませんでした");
   const result = JSON.parse(predJson);
-  const predictedCsv = new TextDecoder().decode(_readBytes("/treg/pred_input_predicted.csv"));
+  // TextDecoder().decode()はデフォルトでBOMを除去してしまい、その後Blob化で
+  // UTF-8(BOM無し)として再エンコードされるため「CSVをDL」がBOMを落とす(中-M3)。
+  // デコードせず生バイトのままdownloadFileに渡し、Python側が書いたBOMを保持する。
+  const predictedCsv = _readBytes("/treg/pred_input_predicted.csv"); // Uint8Array
   return { result, predictedCsv };
 }
 
