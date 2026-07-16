@@ -267,7 +267,11 @@
         .chat-bubble { text-align: center; }
         .chat-bubble.error-mode { border-color: rgba(239,68,68,0.4); color: #fca5a5; }
         .bubble-inner { display: flex; flex-direction: column; gap: 9px; width: 100%; align-items: center; }
-        #chatText { line-height: 1.65; white-space: pre-wrap; }
+        /* word-break:auto-phrase は文節単位で改行する(WebView2/Chrome 119+。非対応環境では
+           無視され従来の任意位置折返しに自然にフォールバックするため安全)。text-wrap-style:balance
+           は複数行になった際の行長を均等化し、中央寄せの吹き出しでガタつきを抑える。line-break:strict
+           は行頭禁則(句読点が行頭に来る等)を徹底する。 */
+        #chatText { line-height: 1.65; white-space: pre-wrap; word-break: auto-phrase; text-wrap-style: balance; line-break: strict; }
         .sample-csv-btn {
             font-family: var(--font-display);
             padding: 5px 11px; border-radius: 4px; border: 1px solid rgba(63,196,236,0.3);
@@ -1971,7 +1975,7 @@
                 'rgba(239,68,68,0.5)', false);
         } else {
             setRobot(gifCompleted,
-                `学習完了！ R²=${r2Done.toFixed(3)}\n右の枠にCSVをドロップして予測しよう。`,
+                `学習完了！ R²=${r2Done.toFixed(3)} 右の枠にCSVをドロップして予測しよう。`,
                 'rgba(240,169,78,0.55)', true);
         }
     }
@@ -2010,7 +2014,7 @@
         startTrainTimer();
         setRobot(gifTraining,
             IS_TAURI ? `学習中... しばらく待ってね`
-                     : `学習中... しばらく待ってね\n(ブラウザが一時的に反応しなくなることがあるよ。\nじっくりモードだと数十秒以上かかる場合も)`,
+                     : `学習中... しばらく待ってね(ブラウザが一時的に反応しなくなることがあるよ。\nじっくりモードだと数十秒以上かかる場合も)`,
             'rgba(79,127,224,0.6)', false);
         // Web版(Pyodide/WASM)は学習中メインスレッドを同期的に占有し続けるため、直前の
         // setRobot()による「学習中」表示が一度も画面に描画されないままフリーズし、ロボが
