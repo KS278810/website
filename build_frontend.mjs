@@ -33,7 +33,7 @@ function loadSource() {
   return { html, refCount };
 }
 
-function copyMissingAssets() {
+function syncAssets() {
   // frontend/reference/ が原本のアセット一式。web/assets/ に無いものだけ補って同期する。
   const refDir = path.join(ROOT, "frontend", "reference");
   const assetsDir = path.join(WEB_DIR, "assets");
@@ -43,7 +43,11 @@ function copyMissingAssets() {
   for (const f of needed) {
     const srcPath = path.join(refDir, f);
     const dstPath = path.join(assetsDir, f);
-    if (fs.existsSync(srcPath) && !fs.existsSync(dstPath)) {
+    // 低-M21: 以前は「web/assets/ に無い場合だけコピー」だったため、
+    // frontend/reference/ 側で画像を差し替えても(ファイル名を変えない限り)
+    // web版には反映されずビルドが古いアセットのまま「成功」してしまっていた。
+    // アセットは軽量なのでビルドの度に常に上書きコピーする。
+    if (fs.existsSync(srcPath)) {
       fs.copyFileSync(srcPath, dstPath);
       copied.push(f);
     }
@@ -97,8 +101,8 @@ function main() {
   const { html, refCount } = loadSource();
   console.log(`読込: ${SRC} (reference/ -> assets/ 置換 ${refCount}箇所)`);
 
-  const copied = copyMissingAssets();
-  if (copied.length) console.log(`アセット補完: ${copied.join(", ")}`);
+  const copied = syncAssets();
+  if (copied.length) console.log(`アセット同期(常に上書き): ${copied.join(", ")}`);
 
   const httpOut = path.join(WEB_DIR, "index.html");
   fs.writeFileSync(httpOut, buildHttpVariant(html));

@@ -4,10 +4,12 @@ CSVをアップロードして回帰モデルを自動学習・予測する T-re
 学習も予測も **Pyodide (WebAssembly) 上で利用者の端末で実行** され、データやモデルはサーバーへ送信されません。
 
 デスクトップ版(Tauri/exe)と同じ Python ロジック（`train_bridge.py` / `_light.py` /
-`predict_template.py`）をベースにしています。`.treg` 書き出し部分のみ、Web版JS予測エンジンが
-対応する全モデル種別(linear/poly-Ridge/lgbm/rf/xt/gp/mlp/blend)向けに拡張されており
-（デスクトップ版のネイティブC++予測エンジンは現状4種別のみ対応）、学習ロジック本体は
-デスクトップ版と同一です。詳細は[プロジェクトルートのREADME](../README.md#プロジェクト構成)参照。
+`predict_template.py`）をベースにしています。2026-07の同期以降、`web/py/` 配下と
+プロジェクトルート直下のこれらのファイルは**内容が完全に一致**しており、`.treg` 書き出しは
+linear/poly-Ridge/lgbm/rf/xt/gp/mlp/blendの全モデル種別に両方とも対応しています
+（読み取り側も2026-07-15よりデスクトップ版のネイティブC++予測エンジン・Web版JS予測
+エンジンの両方が全種別対応済み）。
+詳細は[プロジェクトルートのREADME](../README.md#プロジェクト構成)参照。
 
 ## GUIはexe版と共通（2026-07-05〜）
 

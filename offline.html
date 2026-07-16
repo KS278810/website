@@ -642,10 +642,14 @@
                 <div class="trained-right" style="flex-direction:column;">
                     <div class="tr-tabs">
                         <button id="tabFeature" class="tr-tab active" onclick="showTrainedTab('feature')">特徴量重要度</button>
+                        <button id="tabCandidates" class="tr-tab" onclick="showTrainedTab('candidates')" style="display:none;">候補モデル</button>
                         <button id="tabPredict" class="tr-tab" onclick="showTrainedTab('predict')" style="display:none;">予測結果</button>
                     </div>
                     <div id="featureRankSection" style="display:flex;flex-direction:column;flex:1;min-height:0;">
                         <div id="featureBars" class="feature-bars-scroll"></div>
+                    </div>
+                    <div id="candidateModelsSection" style="display:none;flex-direction:column;flex:1;min-height:0;overflow-y:auto;">
+                        <div id="candidateModelsList" class="feature-bars-scroll"></div>
                     </div>
                     <div id="predictResultSection" style="display:none;flex-direction:column;flex:1;height:0;min-height:0;">
                         <div style="flex-shrink:0;display:flex;align-items:center;justify-content:space-between;gap:10px;">
@@ -741,11 +745,45 @@
     // (assets/ → assets/ のパス置換のみ)なので、ここでの分岐が唯一の相違点。
     const IS_TAURI = !!(window.__TAURI__);
 
+    // Web版はPyodide(WASM)の学習/予測がメインスレッドを同期的に占有し続ける(Web Worker化
+    // していないため)。setRobot()等でDOM状態を変えた直後にそのまま重い処理へ入ると、
+    // ブラウザがその変更を一度も画面に反映しないままフリーズし、ロボが消えたように見える。
+    // requestAnimationFrameを2回連続で待つと、その間に必ず1回分の実際の描画(paint)が
+    // 完了していることが保証される(1回だけの待機やsetTimeout(0)は「次のペイントが来る
+    // 前に呼ばれる」保証はあっても「ペイントが実際に完了した」保証がなく、タイミングに
+    // よっては描画が間に合わないことがある)。なお、この対策は学習/予測の"開始"表示が
+    // 確実に見えるようにするだけで、Web版が長時間かかる学習の間ずっとメインスレッドを
+    // 占有しページが無応答になること自体は解消しない(根本対応はWeb Worker化)。
+    function _yieldForPaint() {
+        return new Promise((resolve) => {
+            requestAnimationFrame(() => requestAnimationFrame(resolve));
+        });
+    }
+
+    // ブラウザへのファイル保存(Blob + <a download>)。Tauri のWebView上でも動作するため
+    // 両プラットフォームで共有する(高-4: 旧実装は makeWebPlatform() のクロージャ内にのみ
+    // 定義されており、トップレベルの predictDownloadBtn ハンドラから呼ぶと ReferenceError
+    // になっていた)。Platform.downloadFile() として両方の Platform オブジェクトから公開する。
+    function downloadFile(bytes, name, type) {
+        const b = new Blob([bytes], { type: type || 'application/octet-stream' });
+        const a = document.createElement('a');
+        a.href = URL.createObjectURL(b); a.download = name; a.click();
+        URL.revokeObjectURL(a.href);
+    }
+
     function makeTauriPlatform() {
         const invoke = window.__TAURI__.core.invoke;
         const listen = window.__TAURI__.event.listen;
+        // cancelTrain() が呼ばれた時点で直前の runTrain() 呼び出しのリスナを即座に解除する
+        // ために、その回の cleanup をここに退避しておく(中-4)。Rust側はキャンセル時、
+        // 誤って「クラッシュした」表示にならないよう意図的に train_error を出さない設計
+        // (lib.rs run_train の cancelled フラグ参照)のため、train_complete/train_error
+        // 経由のcleanup()だけに頼るとキャンセルの度にリスナが解除されず蓄積してしまう。
+        let _trainCleanup = null;
         return {
             capabilities: { cancelTrain: true, sampleFlow: 'save', exportKind: 'native', dragDrop: 'native' },
+
+            downloadFile,
 
             fileDisplayName(fileRef) { return String(fileRef).replace(/\\/g, '/').split('/').pop(); },
 
@@ -759,7 +797,7 @@
             // listen して、終わったら unlisten する(複数回学習しても購読が増え続けないように)。
             async runTrain({ fileRef, targetCol, strategy, numJobs }, { onLog, onProgress, onComplete, onError }) {
                 const unlistens = [];
-                const cleanup = () => unlistens.forEach(u => u());
+                const cleanup = () => { unlistens.forEach(u => u()); _trainCleanup = null; };
                 unlistens.push(await listen('log_data', (e) => {
                     const data = String(e.payload);
                     if (data.startsWith('PROGRESS:')) {
@@ -770,12 +808,23 @@
                 }));
                 unlistens.push(await listen('train_complete', (e) => { cleanup(); onComplete(e.payload); }));
                 unlistens.push(await listen('train_error',    (e) => { cleanup(); onError(String(e.payload)); }));
+                // 3つのlisten()が全て解決してunlistensが揃うまでは_trainCleanupを立てない。
+                // 先に立てていると、登録完了前にcancelTrain()が発火した場合、その時点で
+                // unlistensに入っている分だけをunlistenして_trainCleanupをnullに戻してしまい、
+                // その後に解決する残りのlisten()の購読解除関数がどこからも参照されず
+                // リークする(中-4修正の隙間)。
+                _trainCleanup = cleanup;
                 try {
                     await invoke('run_train', { csvPath: fileRef, targetCol, strategy, numJobs });
                 } catch (e) { cleanup(); throw e; }
             },
 
-            async cancelTrain() { return invoke('cancel_train').catch(() => {}); },
+            async cancelTrain() {
+                // Rust側はキャンセル時に train_error を出さないため、ここで明示的に
+                // 直前のリスナを解除する(中-4)。
+                _trainCleanup?.();
+                return invoke('cancel_train').catch(() => {});
+            },
 
             async runPredict({ fileRef }, { onLog, onComplete, onError }) {
                 const unlistens = [];
@@ -865,12 +914,22 @@
         // { name, _file?: File, _text?: string }
         async function fileText(fileRef) {
             if (fileRef._text != null) return fileRef._text;
-            fileRef._text = await new Promise((resolve, reject) => {
+            // readAsText(file, 'utf-8') 固定だと日本語Excel既定のShift-JIS(cp932) CSVが
+            // U+FFFDでサイレントに化ける(中-M4a)。バイト列を取ってUTF-8として妥当かを
+            // まず検査し、無効ならcp932(shift_jis)としてデコードする
+            // (train_bridge.py._read_csv_with_encoding_fallbackと同じ判定方針)。
+            const buf = await new Promise((resolve, reject) => {
                 const r = new FileReader();
                 r.onload = () => resolve(r.result);
                 r.onerror = () => reject(r.error);
-                r.readAsText(fileRef._file, 'utf-8');
+                r.readAsArrayBuffer(fileRef._file);
             });
+            const bytes = new Uint8Array(buf);
+            try {
+                fileRef._text = new TextDecoder('utf-8', { fatal: true }).decode(bytes);
+            } catch (e) {
+                fileRef._text = new TextDecoder('shift_jis').decode(bytes);
+            }
             return fileRef._text;
         }
 
@@ -902,12 +961,8 @@
             if (_pickResolve) { const r = _pickResolve; _pickResolve = null; r(f ? { name: f.name, _file: f } : null); }
         });
 
-        function download(bytes, name, type) {
-            const b = new Blob([bytes], { type: type || 'application/octet-stream' });
-            const a = document.createElement('a');
-            a.href = URL.createObjectURL(b); a.download = name; a.click();
-            URL.revokeObjectURL(a.href);
-        }
+        // downloadFile はトップレベル共有関数(高-4)。ここでは互換のため短い別名を残す。
+        const download = downloadFile;
 
         let _predictTemplateCache = null;
         // オフライン版(ダブルクリック)は offline-embed.js に同梱済みのテンプレート文字列を使う。
@@ -940,6 +995,8 @@
 
         return {
             capabilities: { cancelTrain: false, sampleFlow: 'direct', exportKind: 'download', dragDrop: 'html5' },
+
+            downloadFile,
 
             fileDisplayName(fileRef) { return fileRef.name; },
 
@@ -1046,6 +1103,13 @@
     }
 
     const Platform = IS_TAURI ? makeTauriPlatform() : makeWebPlatform();
+
+    // ドロップゾーン外へCSVをドロップするとブラウザがそのままファイルへページ遷移し、
+    // 学習済みモデルや進行中の学習が全て破棄されてしまう(中-3)。個別ゾーンの
+    // preventDefault だけでは無効化ゾーン(pointer-events:none)やゾーン外は守れないため、
+    // window レベルで常に既定動作を止める。
+    window.addEventListener('dragover', (e) => e.preventDefault());
+    window.addEventListener('drop', (e) => e.preventDefault());
 
     if (!IS_TAURI) {
         // exe版のネイティブウィンドウサイズ(1100x720)に固定し、ブラウザウィンドウの余りは
@@ -1168,6 +1232,14 @@
     let lastPredictedCsv = null, lastPredictedName = 'predicted.csv';
     let isBusy         = null;   // 'training' | 'predicting' | null
     let deployBlocked  = false;  // R²<0 のときデプロイ/予測を封鎖
+    let exportAvailable = true;  // false: 配布可能なモデルが存在しない(result.export_available===false)
+
+    // DEPLOYボタンを再有効化してよいかどうかの単一判定。
+    // deployBlocked(R²<0) と exportAvailable(配布可能なモデルの有無) の両方を満たす時だけ
+    // trueになる。以前は各再有効化箇所が deployBlocked だけを見ていたため、
+    // export_available===false のケースで予測を1回実行すると DEPLOY ボタンが復活してしまい、
+    // 押すと _lastTreg が無い旨の汎用エラーになる問題があった。再有効化する箇所は必ずこれを使う。
+    function canDeploy() { return !deployBlocked && exportAvailable; }
 
     // CSV由来の文字列（列名など）を innerHTML に埋める前のエスケープ
     function esc(s) {
@@ -1491,23 +1563,68 @@
 
     function showTrainedTab(tab) {
         const featureSec = document.getElementById('featureRankSection');
+        const candidatesSec = document.getElementById('candidateModelsSection');
         const predictSec = document.getElementById('predictResultSection');
         const tabF = document.getElementById('tabFeature');
+        const tabC = document.getElementById('tabCandidates');
         const tabP = document.getElementById('tabPredict');
-        if (tab === 'predict') {
-            featureSec.style.display = 'none';
-            predictSec.style.display = 'flex';
-            tabF.classList.remove('active');
-            tabP.classList.add('active');
-        } else {
-            featureSec.style.display = 'flex';
-            predictSec.style.display = 'none';
-            tabF.classList.add('active');
-            tabP.classList.remove('active');
-        }
+        featureSec.style.display = (tab === 'feature') ? 'flex' : 'none';
+        candidatesSec.style.display = (tab === 'candidates') ? 'flex' : 'none';
+        predictSec.style.display = (tab === 'predict') ? 'flex' : 'none';
+        tabF.classList.toggle('active', tab === 'feature');
+        tabC.classList.toggle('active', tab === 'candidates');
+        tabP.classList.toggle('active', tab === 'predict');
     }
 
     // ── 学習結果を UI に適用 ──────────────────────────────────────────────────
+    // 学習時に比較した候補モデル一覧(R²降順)を表示する。以前はbest_modelしか見えず、
+    // 「なぜこのモデルが選ばれたか」がユーザーから分からなかった(評価レポート5視点の提案)。
+    function renderCandidateModels(candidates) {
+        const listEl = document.getElementById('candidateModelsList');
+        const tabC   = document.getElementById('tabCandidates');
+        listEl.innerHTML = '';
+        if (!Array.isArray(candidates) || candidates.length < 2) {
+            tabC.style.display = 'none';
+            if (document.getElementById('candidateModelsSection').style.display !== 'none') {
+                showTrainedTab('feature');
+            }
+            return;
+        }
+        tabC.style.display = '';
+        const finiteR2 = candidates.map(c => c.r2).filter(r2 => typeof r2 === 'number' && isFinite(r2));
+        const maxR2 = finiteR2.length > 0 ? Math.max(...finiteR2) : 0;
+        const minR2 = finiteR2.length > 0 ? Math.min(...finiteR2) : 0;
+        const r2Span = maxR2 - minR2;
+        const BAR_BASE = '#3fc4ec';
+        candidates.forEach((c, i) => {
+            const alpha = c.is_best ? 1 : Math.max(0.45, 1 - i * 0.07);
+            const hasR2 = typeof c.r2 === 'number' && isFinite(c.r2);
+            // maxR2に対する比率だけで幅を決めると、全候補のR²が0以下(精度不足)の場合に
+            // 全バーが最小幅に潰れて相対順位が見えなくなる。min-max間の相対位置で
+            // 幅を決めることで、全候補が低スコアでも順位の違いは見えるようにする。
+            const pct = !hasR2 ? 2
+                : r2Span > 1e-9 ? Math.max(4, Math.min(100, ((c.r2 - minR2) / r2Span) * 96 + 4))
+                : 60; // 全候補が同スコアの場合は一律の中間幅
+            const div = document.createElement('div'); div.className = 'feature-bar';
+            const nm  = document.createElement('div'); nm.className = 'feature-name';
+            nm.title = c.name; nm.textContent = (c.is_best ? '★ ' : '') + c.name;
+            const ct  = document.createElement('div'); ct.className = 'feature-line-container';
+            const ln  = document.createElement('div'); ln.className = 'feature-line'; ln.dataset.pct = pct;
+            ln.style.background = `linear-gradient(90deg, ${BAR_BASE}28 0%, ${BAR_BASE}90 55%, ${BAR_BASE} 100%)`;
+            ln.style.opacity = alpha;
+            ln.style.boxShadow = `0 0 8px ${BAR_BASE}60`;
+            ct.appendChild(ln);
+            const pt = document.createElement('div'); pt.className = 'feature-pct';
+            pt.style.color = `rgba(63,196,236,${alpha})`;
+            pt.textContent = hasR2 ? c.r2.toFixed(4) : '—';
+            div.appendChild(nm); div.appendChild(ct); div.appendChild(pt);
+            listEl.appendChild(div);
+        });
+        requestAnimationFrame(() => {
+            listEl.querySelectorAll('.feature-line').forEach(el => { el.style.width = el.dataset.pct + '%'; });
+        });
+    }
+
     function applyTrainingResult(result) {
         lastResult = result;
         applyR2Coloring(result.r2 ?? 0);
@@ -1526,7 +1643,15 @@
         }
 
         const warnEl = document.getElementById('dataWarning');
-        if (result.data_warning) { warnEl.textContent = result.data_warning; warnEl.style.display = ''; }
+        // 配布ファイル(HTML/native exe)は.tregにカテゴリエンコーダを持たないため、
+        // カテゴリ列は実質使えずサイレントに精度が崩れる(高-M1)。恒久対応(.treg v5)
+        // までの短期ガードとして、デプロイ判断前にここで明示しておく。
+        const warnParts = [];
+        if (result.data_warning) warnParts.push(result.data_warning);
+        if (Array.isArray(result.cat_columns) && result.cat_columns.length > 0) {
+            warnParts.push(`⚠ 配布ファイル(HTML/exe化)はカテゴリ列「${result.cat_columns.join('、')}」を利用できません。デプロイすると配布先ではこの列が定数扱いになり精度が下がります。`);
+        }
+        if (warnParts.length > 0) { warnEl.textContent = warnParts.join(' '); warnEl.style.display = ''; }
         else { warnEl.style.display = 'none'; }
 
         // RMSE / MAE を R² 下に常時表示
@@ -1562,6 +1687,7 @@
         requestAnimationFrame(() => {
             barsEl.querySelectorAll('.feature-line').forEach(el => { el.style.width = el.dataset.pct + '%'; });
         });
+        renderCandidateModels(result.candidate_models);
 
         closeDetailPopup(); clearPredictError();
         document.getElementById('tabPredict').style.display = 'none';
@@ -1572,6 +1698,7 @@
 
         const r2Val = result.r2 ?? 0;
         deployBlocked = (r2Val < 0);
+        exportAvailable = (result.export_available !== false);
         if (deployBlocked) {
             // R² < 0: 平均値以下の予測力 → PREDICT/DEPLOY をブロック
             predictZone.className = 'drop-zone drop-predict-blocked';
@@ -1582,11 +1709,14 @@
             predictZone.className = 'drop-zone drop-predict-ready action-pulse';
             setPredictSub('↓ CSV をドロップ / クリック');
             // 学習完了直後は PREDICT のみパルス。DEPLOY は静的 ready 状態にとどめる
-            exportBtn.disabled = false; exportBtn.className = 'btn btn-deploy-ready';
+            exportBtn.disabled = !canDeploy(); exportBtn.className = canDeploy() ? 'btn btn-deploy-ready' : 'btn';
             // 画面に表示中のモデル(best_model)と、実際に配布ファイルへ書き出されるモデルが
             // 異なる場合(blend/rf/xt等 .treg 非対応のため代替モデルを使う場合)に、
             // エクスポート前の時点で明示しておく(以前はコンソールログのみで気づけなかった)。
-            if (!result.export_available) {
+            if (!exportAvailable) {
+                // 配布可能なモデルが無いのに DEPLOY ボタンだけ有効なままだと、押下時に
+                // 汎用エラーになってしまう(低-6)ため、ここで確実に無効化に戻す。
+                exportBtn.disabled = true; exportBtn.className = 'btn';
                 deployNote.textContent = '⚠ 配布可能なモデルがありません';
                 deployNote.className = 'deploy-note active';
                 deployNote.style.color = '#f87171';
@@ -1606,7 +1736,7 @@
     function resetToInitial() {
         stopTrainTimer(); setStatusReady();
         clearTimeout(inputNoteTimer); inputNoteTimer = null;
-        isBusy = null; deployBlocked = false;
+        isBusy = null; deployBlocked = false; exportAvailable = true;
         const sl = document.querySelector('.scan-line');
         sl.style.animation = ''; sl.style.opacity = '';
         trainCsvPath = null; selectedTarget = null; csvHeaders = []; lastResult = null;
@@ -1732,6 +1862,9 @@
         setPredictSub('学習後に使えます');
         predictFileName.innerText = '';
         exportBtn.disabled = true; exportBtn.className = 'btn';
+        // 前回学習が export_available=false だった場合の「⚠配布可能なモデルがありません」等の
+        // 警告が、新しいCSVをドロップした後も学習完了まで画面に残り続けるのを防ぐ(情報-N3)。
+        deployNote.textContent = ''; deployNote.className = 'deploy-note'; deployNote.style.color = '';
         csvHeaders = await Platform.readHeaders(fileRef);
         if (!csvHeaders.length) {
             // ヘッダが読めない → セレクタを開かず入力からやり直せる状態に戻す
@@ -1749,7 +1882,7 @@
         inputNoteTimer = setTimeout(() => { inputNote.style.display = 'none'; }, 3000);
     }
 
-    function handlePredictDrop(fileRef) {
+    async function handlePredictDrop(fileRef) {
         if (isBusy || deployBlocked) return;
         isBusy = 'predicting';
         const fileName = Platform.fileDisplayName(fileRef);
@@ -1764,7 +1897,10 @@
         sbProgressWrap.style.display = ''; sbTimer.style.display = 'none';
         sbProgressBar.style.width = '';
         sbProgressBar.style.animation = 'sbIndeterminate 1.5s infinite ease-in-out';
-        setRobot(gifTraining, '予測中... ちょっと待ってね。', 'rgba(47,214,142,0.6)', false);
+        setRobot(gifTraining,
+            IS_TAURI ? '予測中... ちょっと待ってね。'
+                     : '予測中... ちょっと待ってね。\n(ブラウザが一時的に反応しなくなることがあるよ)',
+            'rgba(47,214,142,0.6)', false);
         function onFail(e) {
             isBusy = null;
             sbProgressBar.style.animation = '';
@@ -1775,9 +1911,12 @@
             switchDashboard('trained');
             predictZone.className = 'drop-zone drop-predict-retry action-pulse';
             setPredictSub('↩ 再試行: CSVをドロップ');
-            if (!deployBlocked) { exportBtn.disabled = false; exportBtn.className = 'btn btn-deploy-ready'; }
+            if (canDeploy()) { exportBtn.disabled = false; exportBtn.className = 'btn btn-deploy-ready'; }
             setRobotError(`予測でエラーが起きた。\nCSVをもう一度ドロップしてみてね。`);
         }
+        // Web版はPyodideの予測処理がメインスレッドを同期的に占有するため、直前のsetRobot()が
+        // 実際に描画されてからでないと「予測中」表示が一度も見えないままフリーズする(_yieldForPaint参照)。
+        await _yieldForPaint();
         Platform.runPredict({ fileRef }, { onLog: onPredictLog, onComplete: onPredictComplete, onError: onFail })
             .catch(onFail);
     }
@@ -1841,12 +1980,18 @@
         isBusy = null;
         stopTrainTimer(); setStatusReady();
         cancelBtn.style.display = 'none'; trainBtn.style.display = '';
+        // 低-M20: startTraining()でtrainBtn.disabled=true / exportBtn.disabled=trueに
+        // していたが、エラー時にここで元へ戻していなかったため、学習失敗後に
+        // 「再学習」ボタンも(既存モデルがある場合の)「DEPLOY」ボタンも押せないまま
+        // 固まっていた(再読み込みしないと復旧できない)。
+        trainBtn.disabled = false; trainBtn.className = 'btn';
+        if (canDeploy()) { exportBtn.disabled = false; exportBtn.className = 'btn btn-deploy-ready'; }
         document.getElementById('errorMsg').innerText = msg;
         switchDashboard('error');
         setRobotError(`学習でエラーが起きた。\n下のエラー内容を確認してね。`);
     }
 
-    function startTraining(strategyOverride) {
+    async function startTraining(strategyOverride) {
         if (isBusy) return;
         if (!trainCsvPath) {
             setBubble('先に①の枠へCSVをドロップしてね。', false);
@@ -1854,13 +1999,26 @@
         }
         isBusy = 'training';
         trainBtn.disabled = true; trainBtn.className = 'btn'; trainBtn.style.display = 'none';
+        // retrainThoroughBtn等、handleTrainDropを経由せず直接ここへ来る経路(既存学習結果への
+        // 再学習)でも、学習中は前回結果のDEPLOYボタンを必ず無効化する(低-N2)。
+        exportBtn.disabled = true; exportBtn.className = 'btn';
         cancelBtn.style.display = Platform.capabilities.cancelTrain ? '' : 'none';
         switchDashboard('initial');
         const strategy = strategyOverride || modelStrategySelect.value;
         const numJobs = Math.min(16, Math.max(1,
             parseInt(document.getElementById('cpuNumJobsInput').value) || 4));
         startTrainTimer();
-        setRobot(gifTraining, `学習中... しばらく待ってね`, 'rgba(79,127,224,0.6)', false);
+        setRobot(gifTraining,
+            IS_TAURI ? `学習中... しばらく待ってね`
+                     : `学習中... しばらく待ってね\n(ブラウザが一時的に反応しなくなることがあるよ。\nじっくりモードだと数十秒以上かかる場合も)`,
+            'rgba(79,127,224,0.6)', false);
+        // Web版(Pyodide/WASM)は学習中メインスレッドを同期的に占有し続けるため、直前の
+        // setRobot()による「学習中」表示が一度も画面に描画されないままフリーズし、ロボが
+        // 消えたように見えることがある(exe版は元々非同期プロセス起動のため影響なし)。
+        // _yieldForPaint()で実際に1回分の描画完了を待ってから重い処理へ入る。ただし学習中の
+        // 継続的な進捗アニメーション更新やページ応答性そのものは解消しない(根本対応は
+        // Web Worker化。上のメッセージで事前に「反応しなくなる」ことを明示して代替する)。
+        await _yieldForPaint();
         Platform.runTrain(
             { fileRef: trainCsvPath, targetCol: selectedTarget, strategy, numJobs },
             { onLog: onTrainLog, onProgress: onTrainProgress, onComplete: onTrainComplete, onError: onTrainError }
@@ -1910,6 +2068,20 @@
     // ── ③ 予測完了 ────────────────────────────────────────────────────────
     function onPredictLog(_line) { /* 予測はログ表示なし（元実装どおり） */ }
 
+    // 低-M19: toFixed(2)固定だと、target/特徴量の値が1e-3以下のスケール(例: 微小な
+    // 濃度・比率データ)の場合に軒並み "0.00" に潰れてしまい、プレビュー表を見ても
+    // 予測結果の違いが全く分からなくなる。絶対桁数ではなく有効数字ベースで整形する。
+    function fmtPreviewNum(v) {
+        if (!Number.isFinite(v)) return String(v);
+        if (v === 0) return '0';
+        const av = Math.abs(v);
+        if (av >= 1000) return v.toLocaleString(undefined, { maximumFractionDigits: 0 });
+        if (av >= 1) return v.toFixed(2);
+        if (av >= 0.01) return v.toFixed(4);
+        // 非常に小さい値は固定小数点だと0に潰れるため有効数字3桁を指数表記込みで表示
+        return v.toPrecision(3);
+    }
+
     function onPredictComplete(result) {
         isBusy = null;
         sbProgressBar.style.animation = '';
@@ -1948,7 +2120,7 @@
                 const td = document.createElement('td');
                 if (c === targetCol) td.className = 'target-col';
                 const v = row[c];
-                td.textContent = (v == null) ? '—' : (typeof v === 'number' ? v.toFixed(2) : String(v));
+                td.textContent = (v == null) ? '—' : (typeof v === 'number' ? fmtPreviewNum(v) : String(v));
                 tr.appendChild(td);
             });
             tbody.appendChild(tr);
@@ -1957,7 +2129,7 @@
         switchDashboard('trained');
         document.getElementById('tabPredict').style.display = '';
         showTrainedTab('predict');
-        if (!deployBlocked) { exportBtn.disabled = false; exportBtn.className = 'btn btn-deploy-ready action-pulse'; }
+        if (canDeploy()) { exportBtn.disabled = false; exportBtn.className = 'btn btn-deploy-ready action-pulse'; }
         let doneMsg = result._predictedCsv
             ? `${result.rows}件を予測した！\n「CSVをDL」ボタンで保存できるよ。`
             : `${result.rows}件を予測した！\n結果はCSVファイルに保存済み。`;
@@ -2008,7 +2180,7 @@
     // ── ③b 予測結果CSVのダウンロード(ユーザーが明示的に押した時だけ) ──────────
     document.getElementById('predictDownloadBtn').addEventListener('click', () => {
         if (!lastPredictedCsv) return;
-        download(lastPredictedCsv, lastPredictedName, 'text/csv');
+        Platform.downloadFile(lastPredictedCsv, lastPredictedName, 'text/csv');
     });
 
     // ── ④ デプロイ / モデルのダウンロード ───────────────────────────────────
@@ -2030,11 +2202,11 @@
             if (savedPath === null) {
                 // ユーザーがキャンセル（exe版の保存ダイアログのみ発生しうる）
                 setStatusReady();
-                exportBtn.disabled = false; exportBtn.className = 'btn btn-deploy-ready';
+                if (canDeploy()) { exportBtn.disabled = false; exportBtn.className = 'btn btn-deploy-ready'; }
                 return;
             }
             setStatusDeployed(savedPath);
-            exportBtn.disabled = false; exportBtn.className = 'btn btn-deploy-ready';
+            if (canDeploy()) { exportBtn.disabled = false; exportBtn.className = 'btn btn-deploy-ready'; }
             // 画面のモデル(best_model)と配布ファイルの中身(deployed_model)が異なる場合は
             // 「配布完了」だけでなく、常に何が書き出されたかをここでも明示する。
             const substituted = !!(lastResult && lastResult.deploy_substituted);
@@ -2061,11 +2233,22 @@
                 // 旧exe版で必要だった「ブロック解除」操作はHTML化により不要になった。
                 msg += `\nダブルクリックで開くだけで使えるよ(ネット不要)。`;
             }
+            // 高-M1短期ガード: カテゴリ列は配布ファイルでは使えないため、デプロイ完了の
+            // まさにその瞬間にも念押しする(学習直後のdataWarning見落とし対策)。
+            if (Array.isArray(lastResult?.cat_columns) && lastResult.cat_columns.length > 0) {
+                msg += `\n⚠ カテゴリ列「${lastResult.cat_columns.join('、')}」はこの配布ファイルでは使えないよ(精度低下に注意)。`;
+            }
             setRobot(gifCompleted, msg, 'rgba(240,169,78,0.6)', false);
         } catch (e) {
+            console.error('デプロイ(保存)失敗:', e);
             setStatusReady();
-            setRobotError(`保存でエラーが起きた。\nもう一度試してみてね。`);
-            exportBtn.disabled = false; exportBtn.className = 'btn btn-deploy-ready';
+            // Tauri invoke() は Result<T, String> の Err を Error オブジェクトではなく
+            // 文字列そのものとして reject するため、e?.message ではなく e 自体も見る
+            // (Web版のPyodide側は通常のErrorを投げるため、e.messageも念のため優先する)。
+            const raw = (e && typeof e === 'object' && e.message) ? e.message : e;
+            const detail = raw ? `\n(${raw})` : '';
+            setRobotError(`保存でエラーが起きた。\nもう一度試してみてね。${detail}`);
+            if (canDeploy()) { exportBtn.disabled = false; exportBtn.className = 'btn btn-deploy-ready'; }
         }
     });
 </script>
