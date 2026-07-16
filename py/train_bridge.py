@@ -1568,6 +1568,15 @@ def _write_treg_stream(f, export_type, feat_cols, medians, payload, model_dir,
     import struct
     n_feat = len(feat_cols)
 
+    def _baked_scale(scale):
+        # 中-M3: 読み込み側(C++/JS/predict_template.htmlインライン版)は以前
+        # `(x-mean)/(scale+1e-8)` としてεを足していたが、アプリ内Python(_light.py の
+        # StandardScaler/RobustScaler.transform)は素の除算で、準定数列(IQR/stdが
+        # 1e-12超1e-8未満)でこの2つが大きく乖離していた。書き出し時に
+        # scale=max(scale,1e-8)を焼き込み、読み込み側は「.tregの値で割るだけ」に
+        # 統一する(3実装の数値挙動を揃えることが最重要)。
+        return np.maximum(np.asarray(scale, dtype=np.float64), 1e-8).astype(np.float32)
+
     # このモデルが実際に使う派生特徴のみ書き出す（ソース列の x_clip 境界も同梱）
     feat_set = set(feat_cols)
     used_derived = [r for r in derived_recipe
@@ -1597,7 +1606,7 @@ def _write_treg_stream(f, export_type, feat_cols, medians, payload, model_dir,
     if export_type == 'linear':
         d = payload
         f.write(np.array(d['scaler'].center_, dtype=np.float32).tobytes())
-        f.write(np.array(d['scaler'].scale_,  dtype=np.float32).tobytes())
+        f.write(_baked_scale(d['scaler'].scale_).tobytes())
         f.write(np.array(d['model'].coef_,    dtype=np.float32).tobytes())
         f.write(struct.pack('<f', float(d['model'].intercept_)))
 
@@ -1615,7 +1624,7 @@ def _write_treg_stream(f, export_type, feat_cols, medians, payload, model_dir,
         scaler = d['scaler']
         model = d['model']
         f.write(np.array(scaler.center_, dtype=np.float32).tobytes())
-        f.write(np.array(scaler.scale_,  dtype=np.float32).tobytes())
+        f.write(_baked_scale(scaler.scale_).tobytes())
         terms = [(i, -1) for i in range(n_feat)]
         for i in range(n_feat):
             for j in range(i, n_feat):
@@ -1643,7 +1652,7 @@ def _write_treg_stream(f, export_type, feat_cols, medians, payload, model_dir,
         if len(ls) != n_feat:
             ls = np.full(n_feat, float(ls.mean()) if len(ls) else 1.0)
         f.write(np.array(scaler.mean_,  dtype=np.float32).tobytes())
-        f.write(np.array(scaler.scale_, dtype=np.float32).tobytes())
+        f.write(_baked_scale(scaler.scale_).tobytes())
         f.write(ls.astype(np.float32).tobytes())
         f.write(struct.pack('<f', sv))
         y_mean = float(getattr(gp, 'y_mean_', 0.0))
@@ -1660,7 +1669,7 @@ def _write_treg_stream(f, export_type, feat_cols, medians, payload, model_dir,
         scaler   = pipeline['scaler']
         mlp      = pipeline['mlp']
         f.write(np.array(scaler.mean_,  dtype=np.float32).tobytes())
-        f.write(np.array(scaler.scale_, dtype=np.float32).tobytes())
+        f.write(_baked_scale(scaler.scale_).tobytes())
         n_layers = len(mlp.coefs_)
         f.write(struct.pack('<I', n_layers))
         for i, (W, b) in enumerate(zip(mlp.coefs_, mlp.intercepts_)):

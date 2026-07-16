@@ -27,6 +27,11 @@ def _read_csv_with_encoding_fallback(csv_path):
     # 列選択UI（frontend/index.html・lib.rs）はヘッダの前後空白をtrimして送信するため、
     # pandas側の列名もtrimして揃える(中-M7)。
     df.columns = df.columns.str.strip()
+    # 低-1: 非有限値(inf/-inf。pandasは"inf"/"Infinity"のような文字列セルも数値列なら
+    # そのままfloat('inf')として読み込んでしまう)をNaNに正規化する。C++版は
+    # パース直後に!std::isfinite(v)でNaN化、JS版はNumber.isFiniteで弾いており、
+    # 3実装で非有限値の扱いを統一する(低-1)。
+    df = df.replace([np.inf, -np.inf], np.nan)
     return df
 
 
