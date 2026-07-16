@@ -321,16 +321,6 @@
         .system-standby .title { font-family: var(--font-display); font-size: 11.5px; letter-spacing: 4px; font-weight: 700; color: #4a5a6a; text-transform: uppercase; }
         @keyframes sonar { 0%,100% { transform: scale(0.95); opacity: 0.2; color: #1e293b; } 50% { transform: scale(1.05); opacity: 0.7; color: var(--cyan); text-shadow: 0 0 15px rgba(63,196,236,0.4); } }
 
-        .prev-model-notice { text-align: center; padding: 16px; width: 100%; }
-        .pmn-icon  { font-size: 32px; margin-bottom: 10px; }
-        .pmn-title { font-family: var(--font-display); font-size: 11.5px; font-weight: 700; letter-spacing: 1.5px; text-transform: uppercase; color: #6880a0; margin-bottom: 6px; }
-        .pmn-info  { font-family: var(--font-mono); font-size: 11px; color: #7a8c9a; margin-bottom: 14px; line-height: 1.7; }
-        .pmn-actions { display: flex; gap: 8px; justify-content: center; }
-        .pmn-load-btn { font-family: var(--font-display); padding: 7px 16px; border-radius: 5px; border: 1px solid rgba(63,196,236,0.3); background: rgba(63,196,236,0.06); color: var(--cyan); font-size: 11px; cursor: pointer; letter-spacing: 1px; transition: all 0.2s; font-weight: 700; }
-        .pmn-load-btn:hover { background: rgba(63,196,236,0.14); }
-        .pmn-dismiss-btn { font-family: var(--font-display); padding: 7px 16px; border-radius: 5px; border: 1px solid rgba(255,255,255,0.1); background: transparent; color: #7a8c9a; font-size: 11px; cursor: pointer; letter-spacing: 0.5px; transition: all 0.15s; }
-        .pmn-dismiss-btn:hover { color: #94a3b8; }
-
         /* ─ Target列選択 ─ */
         #targetSelectPanel {
             display: none; position: absolute; inset: 0; background: rgba(3,5,9,0.95);
@@ -537,14 +527,15 @@
     </div>
     <div class="su-app-name">T-regressor</div>
     <div class="su-scan-track"><div class="su-scan-beam"></div></div>
-    <div class="su-status" id="suStatus">起動中...</div>
+    <div class="su-status" id="suStatus" aria-live="polite">起動中...</div>
     <div class="su-progress-track">
         <div class="su-progress-bar" id="suProgressBar" style="width:5%"></div>
     </div>
+    <button id="suRetryBtn" class="retry-btn" style="display:none;">↻ 再試行</button>
 </div>
 
 <header>
-    <img src="assets/logo2.png" class="logo">
+    <img src="assets/logo2.png" class="logo" alt="T-regressor">
     <button id="settingsBtn" class="settings-gear-btn" title="設定"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg></button>
 </header>
 
@@ -554,7 +545,7 @@
     <!-- 1 INPUT -->
     <div class="wf-step">
         <div class="step-hdr"><span class="step-num sn-1">1</span>DROP CSV</div>
-        <div id="dropZone" class="drop-zone action-pulse">
+        <div id="dropZone" class="drop-zone action-pulse" role="button" tabindex="0">
             <div class="drop-zone-hint">↓ CSV をドロップ</div>
             <div id="subFileName" class="file-name"></div>
         </div>
@@ -575,7 +566,7 @@
     <div class="wf-step">
         <div class="step-hdr"><span class="step-num sn-3">3</span>PREDICT</div>
         <div class="predict-col">
-            <div id="predictZone" class="drop-zone drop-zone-disabled">
+            <div id="predictZone" class="drop-zone drop-zone-disabled" role="button" tabindex="0">
                 <div id="predictSubLabel" class="predict-sub-label">学習後に使えます</div>
                 <div id="predictFileName" class="file-name"></div>
             </div>
@@ -597,7 +588,7 @@
     <div class="char-panel">
         <div id="chatBubble" class="chat-bubble">
             <div class="bubble-inner">
-                <span id="chatText">学習データを左の枠にドロップしてね。</span>
+                <span id="chatText" aria-live="polite">学習データを左の枠にドロップしてね。</span>
                 <button id="sampleCsvBtn" class="sample-csv-btn">サンプルCSVを入手</button>
             </div>
         </div>
@@ -692,9 +683,6 @@
             </div>
         </div>
 
-        <!-- ③予測完了（trained-right タブに統合済み） -->
-        <div id="stage-predicted" class="db-stage"></div>
-
         <!-- ④学習エラー -->
         <div id="stage-error" class="db-stage">
             <div class="error-stage-content">
@@ -710,7 +698,7 @@
 <!-- ─ ステータスバー ─ -->
 <div class="status-bar">
     <div id="sbDot" class="sb-dot"></div>
-    <div id="sbLabel" class="sb-label">READY</div>
+    <div id="sbLabel" class="sb-label" aria-live="polite">READY</div>
     <div id="sbProgressWrap" class="sb-progress-wrap" style="display:none;">
         <div id="sbProgressBar" class="sb-progress-bar"></div>
     </div>
@@ -851,23 +839,24 @@
 
             // ネイティブ版はOSのドラッグ&ドロップ(tauri://drag-*)を使う。座標ベースの
             // hover判定は既存実装をそのまま流用する。
-            wireDragAndDrop({ trainZone, predictZone, isBusyRef, predictBlockedRef, onDropTrain, onDropPredict }) {
+            wireDragAndDrop({ trainZone, predictZone, isBusyRef, predictBlockedRef, onDropTrain, onDropPredict, onNonCsvDrop }) {
                 function dragOverPosition(event) {
                     const pos = (event.payload && (event.payload.position || event.payload)) || {};
                     const x = pos.x || 0, y = pos.y || 0;
                     if (x === 0 && y === 0) return;
+                    // 低-9: 以前は論理座標(ウィンドウ左上基準)と物理CSS px座標を両方試すOR判定
+                    // だったが、どちらの座標系が正しいか理解しないまま両方当ててごまかす設計で
+                    // 誤ヒット/取りこぼしの温床だった。物理座標をdevicePixelRatioで割った上で
+                    // ウィンドウの画面上位置を引いた論理座標のみに統一する。
                     const dpr = window.devicePixelRatio || 1;
                     const cx = x / dpr, cy = y / dpr;
-                    const tr = trainZone.getBoundingClientRect();
-                    const pr = predictZone.getBoundingClientRect();
                     const ox = window.screenX || 0, oy = window.screenY || 0;
                     const lx = cx - ox, ly = cy - oy;
+                    const tr = trainZone.getBoundingClientRect();
+                    const pr = predictZone.getBoundingClientRect();
                     const predictBlocked = predictBlockedRef();
-                    const hitTrain = ((lx >= tr.left && lx <= tr.right && ly >= tr.top && ly <= tr.bottom) ||
-                                      (cx >= tr.left && cx <= tr.right && cy >= tr.top && cy <= tr.bottom)) &&
-                                     !isBusyRef();
-                    const hitPredict = ((lx >= pr.left && lx <= pr.right && ly >= pr.top && ly <= pr.bottom) ||
-                                        (cx >= pr.left && cx <= pr.right && cy >= pr.top && cy <= pr.bottom)) &&
+                    const hitTrain = (lx >= tr.left && lx <= tr.right && ly >= tr.top && ly <= tr.bottom) && !isBusyRef();
+                    const hitPredict = (lx >= pr.left && lx <= pr.right && ly >= pr.top && ly <= pr.bottom) &&
                                        !predictBlocked && !isBusyRef();
                     trainZone.classList.toggle('hover', hitTrain);
                     predictZone.classList.toggle('hover', hitPredict);
@@ -878,16 +867,23 @@
                     predictZone.classList.remove('hover');
                 });
                 listen('tauri://drag-drop', async (event) => {
-                    const toPredict = predictZone.classList.contains('hover') &&
+                    const overTrain = trainZone.classList.contains('hover');
+                    const overPredict = predictZone.classList.contains('hover') &&
                                       !predictZone.classList.contains('drop-zone-disabled') &&
                                       !predictZone.classList.contains('drop-predict-blocked');
                     trainZone.classList.remove('hover');
                     predictZone.classList.remove('hover');
                     if (isBusyRef()) return;
+                    // 中-5: 直前のdrag-overで記録したhoverクラスがどちらのゾーンにも
+                    // 付いていない(例: DEPLOYボタンの上へドロップした)場合は、学習扱いに
+                    // 落とさずそのまま無視する。以前はここがelseで無条件にonDropTrainへ
+                    // フォールバックしており、無関係なドロップで学習が始まり状態が壊れていた。
+                    if (!overTrain && !overPredict) return;
                     const paths = Array.isArray(event.payload) ? event.payload : (event.payload?.paths || []);
                     const path = paths[0];
-                    if (!path || !path.toLowerCase().endsWith('.csv')) return;
-                    if (toPredict) onDropPredict(path); else await onDropTrain(path);
+                    if (!path) return;
+                    if (!path.toLowerCase().endsWith('.csv')) { onNonCsvDrop?.(); return; }
+                    if (overPredict) onDropPredict(path); else await onDropTrain(path);
                 });
             },
 
@@ -911,7 +907,7 @@
     // Web版(HTTP配信 / オフラインダブルクリック共通)。計算は Pyodide (WASM) 上で行う。
     // treg-engine.js は ESモジュール(HTTP版)、offline-engine.js は window.TregEngine
     // というグローバル(オフライン版・file://対応)で提供される。どちらも同じ関数シグネチャ
-    // (initEngine/train/predict/loadModel)を持つため、ここでは存在するほうを使うだけでよい。
+    // (initEngine/train/predict)を持つため、ここでは存在するほうを使うだけでよい。
     function makeWebPlatform() {
         let engine = null;
         async function getEngine() {
@@ -960,7 +956,7 @@
             return headers.filter(h => h.length > 0);
         }
 
-        let _lastTreg = null, _lastZip = null;
+        let _lastTreg = null;
         let _pickResolve = null;
         const hiddenInput = document.createElement('input');
         hiddenInput.type = 'file'; hiddenInput.accept = '.csv'; hiddenInput.style.display = 'none';
@@ -969,6 +965,12 @@
             const f = hiddenInput.files[0];
             hiddenInput.value = '';
             if (_pickResolve) { const r = _pickResolve; _pickResolve = null; r(f ? { name: f.name, _file: f } : null); }
+        });
+        // 低-1: ファイル選択ダイアログをユーザーがキャンセルした時、'change'は発火しない。
+        // 'cancel'イベント(Chrome 113+)で明示的にresolve(null)し、Promiseが永久に
+        // 未解決のまま残ってメモリリーク/次回選択時の誤解決につながるのを防ぐ。
+        hiddenInput.addEventListener('cancel', () => {
+            if (_pickResolve) { const r = _pickResolve; _pickResolve = null; r(null); }
         });
 
         // downloadFile はトップレベル共有関数(高-4)。ここでは互換のため短い別名を残す。
@@ -1040,8 +1042,8 @@
                 try {
                     const eng = await getEngine();
                     const csv = await fileText(fileRef);
-                    const { result, tregBytes, modelZipBytes } = await eng.train(csv, targetCol, strategy, { onLog, onProgress });
-                    _lastTreg = tregBytes; _lastZip = modelZipBytes;
+                    const { result, tregBytes } = await eng.train(csv, targetCol, strategy, { onLog, onProgress });
+                    _lastTreg = tregBytes;
                     onComplete(result);
                 } catch (e) { onError(String(e.message || e)); }
             },
@@ -1081,7 +1083,7 @@
 
             // ブラウザの標準 HTML5 drag & drop。要素そのものに乗せる分、Tauri版のような
             // 座標計算は不要(ブラウザが対象要素を教えてくれる)。
-            wireDragAndDrop({ trainZone, predictZone, isBusyRef, predictBlockedRef, onDropTrain, onDropPredict }) {
+            wireDragAndDrop({ trainZone, predictZone, isBusyRef, predictBlockedRef, onDropTrain, onDropPredict, onNonCsvDrop }) {
                 function wireZone(zone, disabledCheck, onDrop) {
                     ['dragover', 'dragenter'].forEach(ev => zone.addEventListener(ev, (e) => {
                         e.preventDefault();
@@ -1093,7 +1095,10 @@
                         zone.classList.remove('hover');
                         if (isBusyRef() || disabledCheck()) return;
                         const f = e.dataTransfer.files[0];
-                        if (!f || !f.name.toLowerCase().endsWith('.csv')) return;
+                        if (!f) return;
+                        // 低-12: CSV以外をドロップした時に何も起きず無反応に見えていたため、
+                        // 「読めるのはCSVだけ」だとフィードバックする。
+                        if (!f.name.toLowerCase().endsWith('.csv')) { onNonCsvDrop?.(); return; }
                         onDrop({ name: f.name, _file: f });
                     });
                 }
@@ -1201,6 +1206,11 @@
             } catch (e) {
                 const s = document.getElementById('suStatus');
                 if (s) { s.textContent = '起動に失敗しました: ' + (e.message || e); s.style.color = '#f87171'; }
+                // 低-2: 以前は失敗した時点で詰み(リロードするしか復旧手段が無いのに
+                // その手段が画面に無い)だった。再試行ボタンを出し、単純にページを
+                // 再読み込みして起動シーケンスをやり直せるようにする。
+                const rb = document.getElementById('suRetryBtn');
+                if (rb) { rb.style.display = ''; rb.onclick = () => location.reload(); }
             }
         })();
     }
@@ -1227,7 +1237,6 @@
     const settingsCloseBtn    = document.getElementById('settingsCloseBtn');
     const stageInitial        = document.getElementById('stage-initial');
     const stageTrained        = document.getElementById('stage-trained');
-    const stagePredicted      = document.getElementById('stage-predicted');
     const stageError          = document.getElementById('stage-error');
     const cancelBtn           = document.getElementById('cancelBtn');
 
@@ -1446,12 +1455,27 @@
         const plotW = cssW - pad.l - pad.r;
         const plotH = cssH - pad.t - pad.b;
 
+        // 低-7: NaN/Infinity混入行がmin/maxに紛れ込むと全体のスケールが壊れ(NaN境界で
+        // 何も描画されない)、有限点まで巻き添えで消える。ペアの片方でも非有限な行は
+        // min/max計算・描画の両方から除外し、有限点が1つも無ければ専用メッセージを出す。
         let lo = Infinity, hi = -Infinity;
+        const finiteIdx = [];
         for (let i = 0; i < trueArr.length; i++) {
-            lo = Math.min(lo, trueArr[i], predArr[i]);
-            hi = Math.max(hi, trueArr[i], predArr[i]);
+            const t = trueArr[i], p = predArr[i];
+            if (Number.isFinite(t) && Number.isFinite(p)) {
+                finiteIdx.push(i);
+                lo = Math.min(lo, t, p);
+                hi = Math.max(hi, t, p);
+            }
         }
-        if (!isFinite(lo) || !isFinite(hi) || lo === hi) { lo -= 1; hi += 1; }
+        if (finiteIdx.length === 0) {
+            ctx.fillStyle = 'rgba(180,200,225,0.6)';
+            ctx.font = '12px system-ui, sans-serif';
+            ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+            ctx.fillText('表示できるデータがありません', cssW / 2, cssH / 2);
+            return;
+        }
+        if (lo === hi) { lo -= 1; hi += 1; }
         const span = hi - lo;
         lo -= span * 0.05; hi += span * 0.05;
         const sx = (v) => pad.l + (v - lo) / (hi - lo) * plotW;
@@ -1484,7 +1508,7 @@
 
         // 点
         ctx.fillStyle = 'rgba(63,196,236,0.55)';
-        for (let i = 0; i < trueArr.length; i++) {
+        for (const i of finiteIdx) {
             ctx.beginPath();
             ctx.arc(sx(trueArr[i]), sy(predArr[i]), 2.6, 0, Math.PI * 2);
             ctx.fill();
@@ -1513,6 +1537,12 @@
     settingsOverlay.addEventListener('click', (e) => {
         if (e.target === settingsOverlay) settingsOverlay.style.display = 'none';
     });
+    // 低-3: 設定オーバーレイをEscキーでも閉じられるようにする(モーダル系UIの標準操作)。
+    document.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape' && settingsOverlay.style.display !== 'none') {
+            settingsOverlay.style.display = 'none';
+        }
+    });
     if (!IS_TAURI) {
         // Web版は WASM 単一スレッドで実行するため CPU並列数は意味を持たない → 無効化して明示する
         const numJobsInput = document.getElementById('cpuNumJobsInput');
@@ -1538,8 +1568,19 @@
         sampleCsvBtn.style.display = showSampleBtn ? '' : 'none';
     }
 
-    function setRobot(gif, text, glowColor, showSampleBtn) {
+    // 直前と同じgifの時は<img>を再生成しない(低-6)。以前は呼ぶたびに毎回
+    // `?t=${Date.now()}`付きの新しい<img>を作り直しており、同じgifへ何度も遷移する
+    // 局面(例: ログの度に「学習中...」を連呼)でチラつき+無駄な再フェッチが発生していた。
+    // gifが実際に変わった時だけ<img>を差し替え、キャッシュバスターもその時だけ付与する。
+    let _lastRobotGif = null;
+    function _setRobotGif(gif) {
+        if (gif === _lastRobotGif) return;
         charBox.innerHTML = `<img src="${gif}?t=${Date.now()}">`;
+        _lastRobotGif = gif;
+    }
+
+    function setRobot(gif, text, glowColor, showSampleBtn) {
+        _setRobotGif(gif);
         const glow = glowColor || 'rgba(63,196,236,0.45)';
         charBox.style.boxShadow = `0 0 45px ${glow}`;
         charBox.style.borderColor = glow;
@@ -1547,7 +1588,7 @@
     }
 
     function setRobotError(text) {
-        charBox.innerHTML = `<img src="${gifOk}?t=${Date.now()}">`;
+        _setRobotGif(gifOk);
         charBox.style.boxShadow = '0 0 45px rgba(239,68,68,0.5)';
         charBox.style.borderColor = 'rgba(239,68,68,0.5)';
         chatText.innerText = truncateChatMsg(text);
@@ -1556,7 +1597,7 @@
     }
 
     function switchDashboard(stage) {
-        for (const el of [stageInitial, stageTrained, stagePredicted, stageError])
+        for (const el of [stageInitial, stageTrained, stageError])
             el.classList.remove('active');
         document.getElementById('stage-' + stage).classList.add('active');
     }
@@ -1882,6 +1923,8 @@
             }
             handlePredictDrop(fileRef);
         },
+        // 低-12: CSV以外のファイルがドロップされた時のフィードバック(Tauri/Web共通)。
+        onNonCsvDrop: () => { setBubble('CSVファイルだけ読めるよ。', false); },
     });
 
     async function handleTrainDrop(fileRef) {
@@ -2097,6 +2140,20 @@
         if (!fileRef) return;
         handlePredictDrop(fileRef);
     });
+
+    // 低-3: role="button"を付与したドロップゾーンをキーボードだけでも操作できるように
+    // する(Enter/Spaceでクリックと同じ挙動)。マウス操作のclickハンドラをそのまま
+    // 再利用できるよう、実要素の.click()を呼ぶだけにする。
+    function wireActivateKey(el) {
+        el.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter' || e.key === ' ' || e.key === 'Spacebar') {
+                e.preventDefault();
+                el.click();
+            }
+        });
+    }
+    wireActivateKey(topDropZone);
+    wireActivateKey(predictZone);
 
     // ── ③ 予測完了 ────────────────────────────────────────────────────────
     function onPredictLog(_line) { /* 予測はログ表示なし（元実装どおり） */ }

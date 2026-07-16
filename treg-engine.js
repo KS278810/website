@@ -148,7 +148,7 @@ runpy.run_path("/treg/train_bridge.py", run_name="__main__")
 }
 
 // 予測: CSV文字列 → { result, predictedCsv }
-// 事前に train() 済み、または loadModel() でモデル復元済みであること
+// 事前に train() 済みであること
 export async function predict(csvText, { onLog } = {}) {
   if (!_ready) throw new Error("エンジン未初期化");
   const hasModel = _pyodide.runPython(`_treg_has_model()`);
@@ -186,16 +186,6 @@ runpy.run_path("/treg/predict_template.py", run_name="__main__")
   // デコードせず生バイトのままdownloadFileに渡し、Python側が書いたBOMを保持する。
   const predictedCsv = _readBytes("/treg/pred_input_predicted.csv"); // Uint8Array
   return { result, predictedCsv };
-}
-
-// 保存済みモデル(.tregz zip)を復元 → 以後 predict() 可能
-export async function loadModel(zipBytes) {
-  if (!_ready) throw new Error("エンジン未初期化");
-  _pyodide.globals.set("_ZIP_DATA", _pyodide.toPy(new Uint8Array(zipBytes)));
-  _pyodide.runPython(`_treg_unzip(_ZIP_DATA, "/treg/trained_model")`);
-  const hasModel = _pyodide.runPython(`_treg_has_model()`);
-  if (!hasModel) throw new Error("無効なモデルファイルです（model_meta.json が見つかりません）");
-  return true;
 }
 
 function _readBytes(path) {
