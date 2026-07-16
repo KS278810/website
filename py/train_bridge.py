@@ -141,21 +141,27 @@ def _sanitize_json(obj):
     return obj
 
 
-def _y_true_for(eval_kind, df, df_train, df_val, target_column):
+def _y_true_for(eval_kind, y_raw_all, tr_idx0, va_idx0):
+    """winsorize(外れ値クリップ)前の生yから、評価対象行を取り出す。
+    以前は winsorize 後の df/df_train/df_val から取っており、学習側で外れ値を
+    丸め込んだ後の「甘くなった正解値」に対してR²/RMSE/MAEを計算していたため、
+    実データに対する精度より楽観的な数値が出ていた(性能アップ計画Phase2/評価の
+    楽観バイアス低減)。y_raw_all は df と同じ行順序を保つ(winsorizeは値の書き換えのみで
+    行の並べ替え・削除は行わないため、tr_idx0/va_idx0とそのまま対応する)。"""
     if eval_kind == 'oof':
-        return df[target_column].values
-    if eval_kind == 'val' and df_val is not None:
-        return df_val[target_column].values
+        return y_raw_all
+    if eval_kind == 'val' and va_idx0 is not None and len(va_idx0) > 0:
+        return y_raw_all[va_idx0]
     if eval_kind == 'train':
-        return df_train[target_column].values
+        return y_raw_all[tr_idx0]
     return None
 
 
-def _eval_metrics(val_preds, eval_kind, df, df_train, df_val, target_column):
+def _eval_metrics(val_preds, eval_kind, y_raw_all, tr_idx0, va_idx0):
     """評価指標（RMSE/MAE/eval_on/eval_rows/y_true）を計算する。eval_kind は明示指定。"""
-    y_true = _y_true_for(eval_kind, df, df_train, df_val, target_column)
+    y_true = _y_true_for(eval_kind, y_raw_all, tr_idx0, va_idx0)
     if val_preds is None or y_true is None or len(y_true) != len(val_preds):
-        return 0.0, 0.0, (eval_kind or 'train'), len(df_train), None
+        return 0.0, 0.0, (eval_kind or 'train'), len(tr_idx0), None
     rmse_val = float(np.sqrt(mean_squared_error(y_true, val_preds)))
     mae_val  = float(mean_absolute_error(y_true, val_preds))
     return rmse_val, mae_val, eval_kind, len(y_true), y_true
@@ -368,6 +374,27 @@ def _clean_model_files(model_dir, keep_type):
                     os.remove(p)
 
 
+# ─── CSV 読み込み（日本語Excel既定のShift-JISフォールバック） ───────────────────
+
+def _read_csv_with_encoding_fallback(csv_path):
+    """UTF-8として妥当かをまずバイト列で検査し、無効なら Shift-JIS(cp932) として読む。
+    日本語Excelが既定で書き出すShift-JIS CSVがUTF-8として「�」化けしたまま
+    サイレントに学習が完走してしまうのを防ぐ(中-7)。"""
+    with open(csv_path, 'rb') as f:
+        raw = f.read()
+    try:
+        raw.decode('utf-8')
+        df = pd.read_csv(csv_path, encoding='utf-8')
+    except UnicodeDecodeError:
+        print(f"[Python] CSVがUTF-8として不正 → Shift-JIS(cp932)として読み込みます", flush=True)
+        df = pd.read_csv(csv_path, encoding='cp932')
+    # 列選択UI（frontend/index.html・lib.rs）はヘッダの前後空白をtrimして送信するため、
+    # pandas側の列名もtrimして揃える。非対称のままだと「表示された列を選んだのに
+    # ターゲット列が存在しません」エラーになる(中-M7)。
+    df.columns = df.columns.str.strip()
+    return df
+
+
 # ─── ターゲット列の解決と検証 ──────────────────────────────────────────────────
 
 def _resolve_and_validate_target(df, target_column_arg):
@@ -407,11 +434,16 @@ def _resolve_and_validate_target(df, target_column_arg):
 
 # ─── Y 変換 ──────────────────────────────────────────────────────────────────
 
-def _detect_y_transform(y: np.ndarray):
+def _detect_y_transform(y: np.ndarray, y_full: np.ndarray = None):
+    """skew判定は y（fold0-train等の部分集合で可）で行うが、log1p適用可否のmin>=0判定は
+    y_full（全行）で行う。負値行が別foldに落ちても log1p(負値)=NaN が学習ターゲットに
+    混入するのを防ぐため。y_full省略時はyそのものを使う（後方互換）。"""
+    if y_full is None:
+        y_full = y
     from _light import skew as scipy_skew
     sk = float(scipy_skew(y))
     print(f"[YTransform] Y skewness={sk:.3f}", flush=True)
-    if sk > SKEW_THRESH and float(y.min()) >= 0:
+    if sk > SKEW_THRESH and float(y_full.min()) >= 0:
         print(f"[YTransform] log1p 変換を適用（skewness={sk:.2f} > {SKEW_THRESH}, min≥0）", flush=True)
         return 'log1p', {}
     if abs(sk) > SKEW_THRESH:
@@ -838,7 +870,7 @@ def _try_lgbm(df_train, df_val, target_col, model_dir, use_grid=False, use_oof=F
                     r2_p = float(r2_score(df_full[target_col].values[touched], oof_p[touched]))
                     print(f"  予選{pidx}/{len(param_grid)}: R²={r2_p:.4f} "
                           f"(leaves={param_override['num_leaves']}, lr={param_override['learning_rate']})", flush=True)
-                    prelim_scores.append(r2_p)
+                    prelim_scores.append(r2_p if np.isfinite(r2_p) else -np.inf)
                 top_idx = np.argsort(prelim_scores)[::-1][:LGBM_FINALISTS]
                 param_grid_final = [param_grid[i] for i in top_idx]
                 print(f"[LightGBM] 予選通過 {len(param_grid_final)} 候補 → 全{n_splits}foldで本戦", flush=True)
@@ -1189,7 +1221,7 @@ def _try_mlp(df_train, df_val, target_col, model_dir, use_grid=False, use_oof=Fa
                     except Exception:
                         r2_p = -np.inf
                     print(f"  予選{pidx}/{len(param_grid)}: R²={r2_p:.4f} (alpha={param_spec.get('alpha'):.2g})", flush=True)
-                    prelim_scores.append(r2_p)
+                    prelim_scores.append(r2_p if np.isfinite(r2_p) else -np.inf)
                 top_idx = np.argsort(prelim_scores)[::-1][:MLP_FINALISTS]
                 param_list = [param_grid[i] for i in top_idx]
                 print(f"[MLP] 予選通過 {len(param_list)} 候補 → 全{n_splits}foldで本戦", flush=True)
@@ -1662,9 +1694,15 @@ def _write_treg_stream(f, export_type, feat_cols, medians, payload, model_dir,
         raise ValueError(f"unknown export_type: {export_type}")
 
     # Y 逆変換情報 (v2)
+    # blend の外側トレーラは常に 'none' にする: メンバーは上の再帰呼び出し
+    # (_write_treg_stream の 'blend' 分岐内、y_transform=実値のまま)で
+    # 個別に実スケールへ逆変換済みのため、外側でもう一度適用すると二重逆変換になる
+    # (predict-core.js の predictBlend は加重和後、外側 predictRow が invYTransform を
+    #  1回適用する設計 — 外側は smear/y_clip/round のみを担当する)。
     Y_TRANSFORM_MAP = {'none': 0, 'log1p': 1, 'yeo_johnson': 2}
-    f.write(struct.pack('<B', Y_TRANSFORM_MAP.get(y_transform, 0)))
-    if y_transform == 'yeo_johnson':
+    eff_yt = 'none' if export_type == 'blend' else y_transform
+    f.write(struct.pack('<B', Y_TRANSFORM_MAP.get(eff_yt, 0)))
+    if eff_yt == 'yeo_johnson':
         f.write(struct.pack('<f', float(y_params.get('lambda', 1.0))))
 
     # 予測後処理情報 (v3): 整数丸め / smearing補正 / Y観測レンジclip / Xクリップ
@@ -1761,8 +1799,8 @@ def _export_treg_blend(model_dir, target_col, candidates, y_transform='none', y_
 
         with open(tmp_path, 'wb') as f:
             _write_treg_stream(f, 'blend', [], {}, {"members": members}, model_dir,
-                               target_col, 'none', {}, smear, y_clip, round_output,
-                               x_clip_all, [])
+                               target_col, y_transform, y_params, smear, y_clip, round_output,
+                               x_clip_all, derived_recipe)
 
         os.replace(tmp_path, out_path)
         size_kb = os.path.getsize(out_path) // 1024
@@ -1795,7 +1833,7 @@ if __name__ == '__main__':
 
     print(f"[Python] CSV を解析中... {csv_path}", flush=True)
     _emit_progress(3, "CSVを読み込み中")
-    df = pd.read_csv(csv_path)
+    df = _read_csv_with_encoding_fallback(csv_path)
 
     # ── ターゲット解決・検証（カテゴリエンコードより前） ─────────────────────
     df, target_column, n_target_na = _resolve_and_validate_target(df, target_column)
@@ -1842,7 +1880,8 @@ if __name__ == '__main__':
     y_transform = 'none'
     y_params    = {}
     try:
-        y_transform, y_params = _detect_y_transform(df[target_column].values[tr_idx0])
+        y_transform, y_params = _detect_y_transform(df[target_column].values[tr_idx0],
+                                                     df[target_column].values)
     except Exception as e:
         print(f"[YTransform] 検出失敗 → 変換スキップ: {e}", flush=True)
 
@@ -1948,13 +1987,13 @@ if __name__ == '__main__':
                 gp_res  = fut_gp.result()
                 mlp_res = fut_mlp.result()
 
-    if lin[0] is not None:
+    if lin[0] is not None and np.isfinite(lin[0]):
         candidates['Linear (Ridge)'] = lin
-    if lgb_res[0] is not None:
+    if lgb_res[0] is not None and np.isfinite(lgb_res[0]):
         candidates['LightGBM'] = lgb_res
-    if gp_res[0] is not None:
+    if gp_res[0] is not None and np.isfinite(gp_res[0]):
         candidates['GaussianProcess (ARD-RBF)'] = gp_res
-    if mlp_res[0] is not None:
+    if mlp_res[0] is not None and np.isfinite(mlp_res[0]):
         candidates['MLP'] = mlp_res
 
     # ── LightGBM バギング多様化メンバー（RF / ExtraTrees モード、thorough のみ） ──
@@ -1964,12 +2003,12 @@ if __name__ == '__main__':
         rf_res = _try_sktree('rf', df_train, target_column, model_dir,
                              y_transform=y_transform, y_params=y_params,
                              df_all=df_all_for_models, splits=splits_for_models, num_jobs=num_jobs)
-        if rf_res[0] is not None:
+        if rf_res[0] is not None and np.isfinite(rf_res[0]):
             candidates['LGBM-RF'] = rf_res
         xt_res = _try_sktree('xt', df_train, target_column, model_dir,
                              y_transform=y_transform, y_params=y_params,
                              df_all=df_all_for_models, splits=splits_for_models, num_jobs=num_jobs)
-        if xt_res[0] is not None:
+        if xt_res[0] is not None and np.isfinite(xt_res[0]):
             candidates['LGBM-XT'] = xt_res
 
     # ── Blend（OOF-NNLS: 重みfitと評価を全行OOFで行う） ───────────────────────
@@ -1979,9 +2018,10 @@ if __name__ == '__main__':
         if blend_result is not None:
             blend_r2, blend_names, blend_weights, blend_oof, blend_feats = blend_result
             # Blend も各メンバーを入れ子.tregとして埋め込む _export_treg_blend で書き出し可能
-            blend_info = {"eval_kind": "oof", "used_cols": [], "medians": {}, "exportable": True}
-            candidates['Blend (Ensemble)'] = (round(blend_r2, 4), blend_feats, 'blend',
-                                              blend_oof, blend_info)
+            if np.isfinite(blend_r2):
+                blend_info = {"eval_kind": "oof", "used_cols": [], "medians": {}, "exportable": True}
+                candidates['Blend (Ensemble)'] = (round(blend_r2, 4), blend_feats, 'blend',
+                                                  blend_oof, blend_info)
             import pickle as _pkl
             with open(os.path.join(model_dir, "blend_meta.pkl"), "wb") as f:
                 _pkl.dump({"models": blend_names,
@@ -1993,14 +2033,14 @@ if __name__ == '__main__':
         print("ERROR: 有効なモデルが1つも訓練できませんでした", flush=True)
         sys.exit(1)
 
-    best_name = max(candidates, key=lambda k: candidates[k][0])
+    best_name = max(candidates, key=lambda k: candidates[k][0] if np.isfinite(candidates[k][0]) else -np.inf)
 
     # ── Blend 採用マージン: 単体最良を BLEND_MARGIN 以上上回った時のみ採用 ──────
     #    (OOF で僅差勝ちしても未知データでは同等以下になりやすいため)
     if best_name == 'Blend (Ensemble)':
         singles = {k: v for k, v in candidates.items() if k != 'Blend (Ensemble)'}
         if singles:
-            best_single = max(singles, key=lambda k: singles[k][0])
+            best_single = max(singles, key=lambda k: singles[k][0] if np.isfinite(singles[k][0]) else -np.inf)
             diff = candidates[best_name][0] - singles[best_single][0]
             if diff < BLEND_MARGIN:
                 print(f"[Blend] 単体最良 ({best_single}) とのOOF差 {diff:+.4f} < {BLEND_MARGIN} "
@@ -2020,7 +2060,7 @@ if __name__ == '__main__':
 
     # ── 評価 + 予測後処理（表示 R² は後処理適用後の予測で再計算） ──────────────
     eval_kind = best_info.get("eval_kind", "train") if best_info else "train"
-    y_true_eval = _y_true_for(eval_kind, df, df_train, df_val, target_column)
+    y_true_eval = _y_true_for(eval_kind, y_raw_all, tr_idx0, va_idx0)
 
     smear, y_clip_lo, y_clip_hi, round_output = _fit_postprocess_params(
         best_preds, y_true_eval, y_transform, y_raw_all, target_is_integer)
@@ -2030,7 +2070,7 @@ if __name__ == '__main__':
     if best_preds is not None and y_true_eval is not None and len(y_true_eval) == len(best_preds):
         corrected = _apply_postprocess(best_preds, smear, y_clip_lo, y_clip_hi, round_output)
         rmse_val, mae_val, eval_on_str, eval_rows, _ = _eval_metrics(
-            corrected, eval_kind, df, df_train, df_val, target_column)
+            corrected, eval_kind, y_raw_all, tr_idx0, va_idx0)
         r2_report = round(float(r2_score(y_true_eval, corrected)), 4)
 
         yt = np.asarray(y_true_eval, dtype=float)
@@ -2046,7 +2086,7 @@ if __name__ == '__main__':
                             "pred": [round(float(v), 4) for v in yp]}
     else:
         rmse_val, mae_val, eval_on_str, eval_rows, _ = _eval_metrics(
-            best_preds, eval_kind, df, df_train, df_val, target_column)
+            best_preds, eval_kind, y_raw_all, tr_idx0, va_idx0)
 
     meta_payload = _sanitize_json({
         "model_type":      model_type,
@@ -2103,6 +2143,26 @@ if __name__ == '__main__':
         "gp_format":          "pkl" if model_type == 'gp' else None,
         "scatter":            scatter_data,
         "y_range":            [round(float(np.min(y_raw_all)), 4), round(float(np.max(y_raw_all)), 4)],
+        # 配布ファイル（HTML/native exe）は .treg にカテゴリエンコーダを持たないため
+        # カテゴリ列を実質使えない（高-M1）。UI側でデプロイ前後に警告を出すためのフラグ。
+        "cat_columns":        list(cat_encoders.keys()) if cat_encoders else [],
+        # 学習時に比較した候補モデル一覧（R²降順）。以前はbest_modelしかUIに出せず、
+        # 「なぜこのモデルが選ばれたか」がユーザーから見えなかった(評価レポート5視点の
+        # 提案項目)。r2はcandidates内のOOF/検証スコア(=表示R²と評価データが異なる場合が
+        # あるため参考値。厳密な比較はr2_rawとは別軸)。
+        "candidate_models": [
+            {
+                "name": k,
+                "r2": round(float(v[0]), 4) if np.isfinite(v[0]) else None,
+                "model_type": v[2],
+                "is_best": (k == best_name),
+            }
+            for k, v in sorted(
+                candidates.items(),
+                key=lambda kv: kv[1][0] if np.isfinite(kv[1][0]) else -np.inf,
+                reverse=True,
+            )
+        ],
     }
 
     # ── デプロイ用 .treg: 表示モデル(best_name)を最優先で書き出す ──────────────
@@ -2126,7 +2186,7 @@ if __name__ == '__main__':
         if dep_name not in exportable_candidates:
             continue
         dep_r2, _, dep_type, dep_preds, dep_info = exportable_candidates[dep_name]
-        dep_y_true = _y_true_for(dep_info.get("eval_kind", "train"), df, df_train, df_val, target_column)
+        dep_y_true = _y_true_for(dep_info.get("eval_kind", "train"), y_raw_all, tr_idx0, va_idx0)
         dep_smear, _, _, _ = _fit_postprocess_params(
             dep_preds, dep_y_true, y_transform, y_raw_all, target_is_integer)
         if dep_type == 'blend':
