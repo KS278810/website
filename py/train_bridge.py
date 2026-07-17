@@ -52,6 +52,11 @@ LGBM_HALVING_FOLDS = 2      # thorough グリッド予選に使う fold 数
 LGBM_SCREEN_MIN_FEATS = 10  # これ以下なら特徴量スクリーニングをスキップ
 X_CLIP_SENTINEL    = 3.4e38  # .treg での「クリップなし」境界値 (float32 有限最大近傍)
 
+# LightGBM early stopping 専用 holdout（高-H2: 評価fold自身をESに使わない）
+ES_VAL_FRAC        = 0.10   # fold-train内から切り出すES専用valの比率
+ES_SPLIT_SEED      = 20260716
+ES_MIN_TRAIN_ROWS  = 20     # これ未満ならES分割せず固定本数で学習（小データでのfit不能を回避）
+
 # Hyperparameter search for thorough mode (ランダムサーチ + 予選足切り)
 LGBM_FINALISTS     = 3   # 予選(2fold)通過して全foldで本戦する候補数
 MLP_N_CANDIDATES   = 8
@@ -206,6 +211,25 @@ def _find_constant_and_duplicate_cols(df, feat_cols):
 #     lgb.LGBMRegressor は sklearn を要求するため、native Booster API に統一する。
 #     LightGBM は subsample/colsample_bytree/reg_alpha 等の sklearn 風エイリアスを
 #     native 側で解決するので、パラメータ dict はほぼそのまま渡せる。
+
+def _split_es_holdout(dtr, seed_offset=0):
+    """fold-train（またはquickのdf_train）内をさらに90/10に分割し、10%をLightGBMの
+    early stopping専用valとして返す。以前は評価対象のfold(OOF)やdf_val(quick)自身を
+    ESのvalとしても使い回しており、LGBMだけが評価データに直接フィットして系統的に
+    有利になりOOF/検証R²を楽観化させていた(高-H2)。ここで切り出す10%はbest_iteration
+    の決定にのみ使い、oof_preds/最終R²の算出には一切使わない。
+    Returns: (fit_df, es_df)。行数不足時は (dtr, None)（=ESなしで固定本数学習にフォールバック）。"""
+    n = len(dtr)
+    if n < ES_MIN_TRAIN_ROWS:
+        return dtr, None
+    rng = np.random.RandomState(ES_SPLIT_SEED + seed_offset)
+    idx = rng.permutation(n)
+    n_es = max(1, int(round(n * ES_VAL_FRAC)))
+    if n - n_es < 10:
+        return dtr, None
+    es_idx, fit_idx = idx[:n_es], idx[n_es:]
+    return dtr.iloc[fit_idx], dtr.iloc[es_idx]
+
 
 def _lgb_fit(sk_params, X, y, X_val=None, y_val=None, early_stopping=0):
     """lgb.train で Booster を学習して返す。n_estimators は num_boost_round に振り替える。"""
@@ -845,11 +869,18 @@ def _try_lgbm(df_train, df_val, target_col, model_dir, use_grid=False, use_oof=F
                     dtr = df_full.iloc[tr_idx]
                     dva = df_full.iloc[va_idx]
                     med_f = dtr[feat_cols].median()
-                    X_f = dtr[feat_cols].fillna(med_f).values
-                    y_f = _apply_y_transform(dtr[target_col].values, y_transform, y_params)
+                    # 高-H2: early stoppingは評価fold(dva)自身ではなくfold-train内の
+                    # 専用holdout(90/10)で行う。dvaはOOF評価にのみ使い、ESには触れさせない。
+                    dtr_fit, dtr_es = _split_es_holdout(dtr, seed_offset=fold_idx)
+                    X_f = dtr_fit[feat_cols].fillna(med_f).values
+                    y_f = _apply_y_transform(dtr_fit[target_col].values, y_transform, y_params)
                     X_v = dva[feat_cols].fillna(med_f).values
-                    y_v_t = _apply_y_transform(dva[target_col].values, y_transform, y_params)
-                    bst = _lgb_fit(params, X_f, y_f, X_v, y_v_t, early_stopping=50)
+                    if dtr_es is not None:
+                        X_es = dtr_es[feat_cols].fillna(med_f).values
+                        y_es_t = _apply_y_transform(dtr_es[target_col].values, y_transform, y_params)
+                        bst = _lgb_fit(params, X_f, y_f, X_es, y_es_t, early_stopping=50)
+                    else:
+                        bst = _lgb_fit(params, X_f, y_f)
                     preds_t = bst.predict(X_v)
                     oof_preds_local[va_idx] = _invert_y_transform(preds_t, y_transform, y_params)
                     touched[va_idx] = True
@@ -922,10 +953,15 @@ def _try_lgbm(df_train, df_val, target_col, model_dir, use_grid=False, use_oof=F
         y_tr = _apply_y_transform(df_train[target_col].values, y_transform, y_params)
         params = dict(base_params)
         params.update(LGBM_PARAM_QUICK)
-        if df_val is not None:
-            X_val = df_val[feat_cols].fillna(medians).values
-            y_val_t = _apply_y_transform(df_val[target_col].values, y_transform, y_params)
-            model = _lgb_fit(params, X_tr, y_tr, X_val, y_val_t, early_stopping=30)
+        # 高-H2: early stoppingはdf_val(このfoldの評価データ)ではなくdf_train内の
+        # 専用holdout(90/10)で行う。df_valは評価専用に残し、ESには一切使わない。
+        dtr_fit, dtr_es = _split_es_holdout(df_train)
+        if dtr_es is not None:
+            X_f = dtr_fit[feat_cols].fillna(medians).values
+            y_f = _apply_y_transform(dtr_fit[target_col].values, y_transform, y_params)
+            X_es = dtr_es[feat_cols].fillna(medians).values
+            y_es_t = _apply_y_transform(dtr_es[target_col].values, y_transform, y_params)
+            model = _lgb_fit(params, X_f, y_f, X_es, y_es_t, early_stopping=30)
         else:
             model = _lgb_fit(params, X_tr, y_tr)
 
