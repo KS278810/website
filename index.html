@@ -1717,13 +1717,15 @@
         }
 
         const warnEl = document.getElementById('dataWarning');
-        // 配布ファイル(HTML/native exe)は.tregにカテゴリエンコーダを持たないため、
-        // カテゴリ列は実質使えずサイレントに精度が崩れる(高-M1)。恒久対応(.treg v5)
-        // までの短期ガードとして、デプロイ判断前にここで明示しておく。
+        // 精度レバー4/.treg v5(2026-07-16)以降、カテゴリ列はone-hot/target encodingの
+        // エンコーダごと配布ファイル(HTML/native exe)にも収録され、アプリ内予測と
+        // 同じ扱いを受ける(以前の「配布ファイルでは使えない」警告は解消済み)。
+        // 唯一「使えない」のはカーディナリティが行数に対して高すぎて除外された列
+        // (cat_dropped_columns)なので、これのみ警告する。
         const warnParts = [];
         if (result.data_warning) warnParts.push(result.data_warning);
-        if (Array.isArray(result.cat_columns) && result.cat_columns.length > 0) {
-            warnParts.push(`⚠ 配布ファイル(HTML/exe化)はカテゴリ列「${result.cat_columns.join('、')}」を利用できません。デプロイすると配布先ではこの列が定数扱いになり精度が下がります。`);
+        if (Array.isArray(result.cat_dropped_columns) && result.cat_dropped_columns.length > 0) {
+            warnParts.push(`⚠ カーディナリティが行数に対して高すぎるため除外した列: 「${result.cat_dropped_columns.join('、')}」。この列は学習・配布ファイルとも一切使われません。`);
         }
         if (warnParts.length > 0) { warnEl.textContent = warnParts.join(' '); warnEl.style.display = ''; }
         else { warnEl.style.display = 'none'; }
@@ -2324,10 +2326,11 @@
                 deployWarnParts.push(`※今回の設定では画面表示中の${lastResult.best_model}は書き出せず、` +
                        `${lastResult.deployed_model}(R²=${r2Str})を代わりに使用しています。`);
             }
-            // 高-M1短期ガード: カテゴリ列は配布ファイルでは使えないため、デプロイ完了の
-            // まさにその瞬間にも念押しする(学習直後のdataWarning見落とし対策)。
-            if (Array.isArray(lastResult?.cat_columns) && lastResult.cat_columns.length > 0) {
-                deployWarnParts.push(`⚠ カテゴリ列「${lastResult.cat_columns.join('、')}」はこの配布ファイルでは使えません(精度低下に注意)。`);
+            // 精度レバー4/.treg v5以降、カテゴリ列は配布ファイルでも使えるため、この
+            // デプロイ完了時の念押し警告は「除外された列」(cat_dropped_columns)のみ
+            // 対象にする(学習直後のdataWarning見落とし対策)。
+            if (Array.isArray(lastResult?.cat_dropped_columns) && lastResult.cat_dropped_columns.length > 0) {
+                deployWarnParts.push(`⚠ カテゴリ列「${lastResult.cat_dropped_columns.join('、')}」はカーディナリティが高すぎるため除外されています(精度低下に注意)。`);
             }
             setWarnBanner('deploy', deployWarnParts.length > 0 ? deployWarnParts.join('　') : null);
 
