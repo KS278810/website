@@ -1108,7 +1108,7 @@ def _try_lgbm(df_train, df_val, target_col, model_dir, use_grid=False, use_oof=F
             params, best_iters, oof_preds, oof_r2 = best_param_set
             print(f"[LightGBM] 最良パラメータ R²={oof_r2:.4f}", flush=True)
 
-            best_n = max(50, int(np.mean(best_iters) * 1.05))
+            best_n = max(50, int(np.mean(best_iters) * 1.15))
             final_p = dict(params)
             final_p['n_estimators'] = best_n
             medians_full = df_full[feat_cols].median()
