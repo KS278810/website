@@ -258,6 +258,10 @@ function loadTreg(buf, depth = 0) {
 
     if (model.file_version >= 4) {
         const nDerived = r.u32();
+        // 低-検査パリティフォロー: C++(predict_native_v2.cpp load_treg)は n_derived>100000
+        // を拒否するが、JS側はこの上限検査が無く、細工された.tregでnDerivedにu32最大値
+        // 近くの値を入れられるとループが極端に長時間ハングする恐れがあった。同じ上限に揃える。
+        if (r.fail || nDerived > 100000) throw new Error("bad n_derived count");
         for (let i = 0; i < nDerived; i++) {
             const df = {
                 op: r.u8(), name: r.str(),
@@ -379,8 +383,18 @@ function loadTreg(buf, depth = 0) {
         const termA = new Int32Array(nTerms);
         const termB = new Int32Array(nTerms);
         for (let i = 0; i < nTerms; i++) {
-            termA[i] = r.i32();
-            termB[i] = r.i32();
+            const ta = r.i32();
+            const tb = r.i32();
+            // 低-検査パリティフォロー: C++(predict_native_v2.cpp load_treg)は
+            // term_a/term_b が [0,d) 範囲外だとpredict_linear_poly()のs[a]/s[b]が
+            // 配列外読み出しになるため拒否するが、JS側にはこの検査が無く、細工された
+            // .tregでNaN化(配列外→undefined演算)を起こせる恐れがあった。term_b<0は
+            // 「単項」を表す正当な値のため、それ以外の場合のみ [0,d) を要求する。
+            if (r.fail || ta < 0 || ta >= d || (tb >= 0 && tb >= d)) {
+                throw new Error("bad linear_poly term index");
+            }
+            termA[i] = ta;
+            termB[i] = tb;
         }
         const coef = r.floats(nTerms);
         const intercept = r.f32();
