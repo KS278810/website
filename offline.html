@@ -1251,6 +1251,32 @@
     } else {
         // Web版: Pyodide(WASM)の実読込には数秒〜十数秒かかるため、実際の進捗を表示する。
         (async () => {
+            // 再発防止: withGlobalTauriの注入(window.__TAURI__)がこのインラインスクリプトの
+            // 実行より遅れる稀なタイミングズレにより、実際はexe版(Tauri)なのに起動時点の
+            // IS_TAURI判定がfalseになり、Web版専用のPyodideブートストラップに入って
+            // 存在しないファイル(_light.py等)をtreg://へfetchして404になり
+            // 「起動に失敗しました」と出る不具合が再発したため、入口で再確認する。
+            // exe版かどうかの判定は location.hostname で行う。Tauri v2はWindows上で
+            // カスタムスキーム(treg://)をWebView2互換のため http://treg.localhost/ という
+            // 仮想ホスト形式に変換するため、location.protocol は 'http:' のままになり
+            // 'treg:' には絶対にならない(実機のCDPで実測して判明。当初この判定を
+            // protocolで書いていたため機能しないコードになっていた)。
+            // treg.localhost(exe版のカスタムスキーム)の時だけ少し待って再確認し、後から
+            // window.__TAURI__が出現していれば「本当はexe版だった」と判断してページを
+            // 1回だけ再読込し正しい判定でやり直す(無限リロード防止にsessionStorageの
+            // 1回限りフラグを使う。ウィンドウを閉じれば消えるため次回起動でまた1回試せる)。
+            // 本物のブラウザ版(http/https/file)ではhostnameが'treg.localhost'にならない
+            // ためこの分岐は一切通らず、待機コストもゼロ。
+            if (location.hostname === 'treg.localhost') {
+                if (!window.__TAURI__) {
+                    await new Promise((r) => setTimeout(r, 500));
+                }
+                if (window.__TAURI__ && !sessionStorage.getItem('_tauriLateInitReload')) {
+                    sessionStorage.setItem('_tauriLateInitReload', '1');
+                    location.reload();
+                    return;
+                }
+            }
             try {
                 await Platform.warmup({ onStatus: (msg, pct) => _setStartup(msg, pct) });
                 _hideStartup();
