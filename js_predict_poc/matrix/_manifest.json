@@ -47,5 +47,6 @@
   "blend_lgbm_linear_log1p_roundFalse",
   "linear_onehot_cat_none_roundFalse",
   "lgbm_target_enc_cat_none_roundFalse",
-  "blend_cat_mixed_none_roundFalse"
+  "blend_cat_mixed_none_roundFalse",
+  "linear_onehot_bool_none_roundFalse"
 ]

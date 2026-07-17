@@ -173,12 +173,51 @@ def gen_blend_cat_mixed():
     return "blend_cat_mixed_none_roundFalse"
 
 
+def gen_bool_onehot():
+    """中-8ef9191フォロー: bool dtype 列は is_numeric_dtype が True を返すため、
+    修正前の _prepare_categoricals は素通りして数値列として扱ってしまっていた
+    (native/JSは配布後の予測入力CSVの"True"/"False"という文字列をfloatパースできず
+    NaN→定数化するバグの原因)。純粋なbool dtype列(欠損なし。欠損混在だとpandasは
+    object dtypeに落ちて元から正しく判定されていたため、このケースを明示的に検証する)
+    が2クラスone-hot(class_value="True"/"False")として扱われることを検証する。
+    stress_test.csv の 'flag' 列(True/False/未知値'Maybe'/欠損セルを含む、cat1の
+    Z/空セルと同じ行に配置)と組み合わせて run_matrix_test.js から検証する。"""
+    rng = np.random.RandomState(21)
+    n = 260
+    x1 = rng.uniform(-3, 3, n)
+    flag = rng.choice([True, False], size=n)
+    y = 2.0 * x1 + np.where(flag, 5.0, -5.0) + rng.normal(0, 0.3, n)
+    df = pd.DataFrame({"x1": x1, "flag": flag, "y": y})
+    assert df["flag"].dtype == bool, df["flag"].dtype
+
+    df2, onehot_specs, target_cols, dropped = tb._prepare_categoricals(df, "y")
+    assert not target_cols and not dropped, (target_cols, dropped)
+    assert len(onehot_specs) == 2, onehot_specs
+    assert {s["class_value"] for s in onehot_specs} == {"True", "False"}, onehot_specs
+    cat_encoders_all = onehot_specs
+
+    model_dir = _mk_dir()
+    r2, feat_list, model_type, preds, info = tb._try_linear(
+        df2, None, "y", model_dir, y_transform="none", y_params={},
+        df_all=None, use_oof=False, splits=None)
+    assert model_type == "linear", model_type
+
+    ok = tb._export_treg("linear", model_dir, "y", y_transform="none", y_params={},
+                         smear=1.0, y_clip=(-tb.X_CLIP_SENTINEL, tb.X_CLIP_SENTINEL),
+                         round_output=False, x_clip_all={}, derived_recipe=[],
+                         cat_encoders_all=cat_encoders_all)
+    assert ok
+    _write_and_copy(model_dir, "linear_onehot_bool_none_roundFalse")
+    return "linear_onehot_bool_none_roundFalse"
+
+
 def main():
     os.makedirs(MATRIX_DIR, exist_ok=True)
     new_names = []
     new_names.append(gen_linear_onehot())
     new_names.append(gen_lgbm_target_enc())
     new_names.append(gen_blend_cat_mixed())
+    new_names.append(gen_bool_onehot())
 
     with open(MANIFEST_PATH, "r", encoding="utf-8") as f:
         manifest = json.load(f)
