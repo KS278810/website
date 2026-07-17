@@ -850,14 +850,15 @@
                     const pos = (event.payload && (event.payload.position || event.payload)) || {};
                     const x = pos.x || 0, y = pos.y || 0;
                     if (x === 0 && y === 0) return;
-                    // 低-9: 以前は論理座標(ウィンドウ左上基準)と物理CSS px座標を両方試すOR判定
+                    // 低-9/R-1: 以前は論理座標(ウィンドウ左上基準)と物理CSS px座標を両方試すOR判定
                     // だったが、どちらの座標系が正しいか理解しないまま両方当ててごまかす設計で
-                    // 誤ヒット/取りこぼしの温床だった。物理座標をdevicePixelRatioで割った上で
-                    // ウィンドウの画面上位置を引いた論理座標のみに統一する。
+                    // 誤ヒット/取りこぼしの温床だった。Tauri v2のdrag-over position(pos.x/y)は
+                    // wryがwebview相対・物理pxで渡すため、devicePixelRatioで割るだけで
+                    // getBoundingClientRect()と同じ論理座標系(ウィンドウ内相対)になる。
+                    // window.screenX/screenY(ウィンドウの画面上位置)を引くのは誤りで、
+                    // 非最大化ウィンドウを画面原点以外に置くと二重減算でhoverが一切付かなくなる。
                     const dpr = window.devicePixelRatio || 1;
-                    const cx = x / dpr, cy = y / dpr;
-                    const ox = window.screenX || 0, oy = window.screenY || 0;
-                    const lx = cx - ox, ly = cy - oy;
+                    const lx = x / dpr, ly = y / dpr;
                     const tr = trainZone.getBoundingClientRect();
                     const pr = predictZone.getBoundingClientRect();
                     const predictBlocked = predictBlockedRef();
