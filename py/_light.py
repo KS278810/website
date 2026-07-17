@@ -249,15 +249,21 @@ class PowerTransformer:
 
     @staticmethod
     def _yj_inv(y, lam):
+        # 中-M3: lam*y+1 や (2-lam)*(-y)+1 が0以下になると、非整数指数の累乗でNaNが発生し
+        # (isfiniteチェックで)候補全滅の原因になっていた。定義域外に落ちるのを防ぐため
+        # 底を1e-12にクリップする(理論上ありえない極端なy値からの逆変換のみに影響し、
+        # 通常domain内の値には影響しない)。
         y = np.asarray(y, float); out = np.empty_like(y); pos = y >= 0
         if abs(lam) < 1e-6:
             out[pos] = np.expm1(y[pos])
         else:
-            out[pos] = (lam * y[pos] + 1.0) ** (1.0 / lam) - 1.0
+            base_pos = np.clip(lam * y[pos] + 1.0, 1e-12, None)
+            out[pos] = base_pos ** (1.0 / lam) - 1.0
         if abs(lam - 2.0) < 1e-6:
             out[~pos] = 1.0 - np.exp(-y[~pos])
         else:
-            out[~pos] = 1.0 - (-(2.0 - lam) * y[~pos] + 1.0) ** (1.0 / (2.0 - lam))
+            base_neg = np.clip(-(2.0 - lam) * y[~pos] + 1.0, 1e-12, None)
+            out[~pos] = 1.0 - base_neg ** (1.0 / (2.0 - lam))
         return out
 
     def inverse_transform(self, X):
@@ -341,7 +347,12 @@ class LightMLP:
             delta = (2.0 / N) * (pred - yn)[:, None]
             gW = [None] * nL; gb = [None] * nL
             for i in reversed(range(nL)):
-                gW[i] = a[i].T @ delta + lam * Ws[i]
+                # 中-M5: 正則化勾配をNで割っていなかったため、データ件数Nが大きいほど
+                # 損失項(gW中のa[i].T@delta、Nで正規化済み)に対して正則化項が相対的に
+                # 強くなりすぎ、大規模データでunderfit方向にずれていた(sklearn.MLPRegressor
+                # のalphaは損失の平均に対する係数のため、lam/Nでスケールを揃える)。
+                # bias(gb)はsklearn同様に正則化しない(元から対象外、変更なし)。
+                gW[i] = a[i].T @ delta + (lam / N) * Ws[i]
                 gb[i] = delta.sum(0)
                 if i > 0:
                     delta = (delta @ Ws[i].T) * (z[i - 1] > 0)

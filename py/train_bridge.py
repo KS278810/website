@@ -33,7 +33,8 @@ except Exception:
 
 MIN_ROWS_FOR_SPLIT = 10
 GP_MAX_TRAIN       = 300   # GP 1フィットあたりの最大学習行数（超過時はランダムサブサンプル）
-SCIPY_GP_MIN_ROWS  = 50
+SCIPY_GP_MIN_ROWS  = 10   # 中-M6: 50→10。GPが最も効く小データ域でハイパラ最適化を
+                          # スキップしていたため引き下げ(固定ハイパラのままだった)
 MLP_MIN_ROWS       = 30
 OUTLIER_IQR_MULT   = 3.0
 OUTLIER_IQR_QUICK  = 4.5
@@ -163,10 +164,12 @@ def _y_true_for(eval_kind, y_raw_all, tr_idx0, va_idx0):
 
 
 def _eval_metrics(val_preds, eval_kind, y_raw_all, tr_idx0, va_idx0):
-    """評価指標（RMSE/MAE/eval_on/eval_rows/y_true）を計算する。eval_kind は明示指定。"""
+    """評価指標（RMSE/MAE/eval_on/eval_rows/y_true）を計算する。eval_kind は明示指定。
+    中-M4: 評価不能時は「誤差ゼロ」に見える0.0ではなくNoneを返す(_sanitize_json経由で
+    JSON上はnullとして出力され、フロントで「評価できませんでした」等の扱いが可能になる)。"""
     y_true = _y_true_for(eval_kind, y_raw_all, tr_idx0, va_idx0)
     if val_preds is None or y_true is None or len(y_true) != len(val_preds):
-        return 0.0, 0.0, (eval_kind or 'train'), len(tr_idx0), None
+        return None, None, (eval_kind or 'train'), len(tr_idx0), None
     rmse_val = float(np.sqrt(mean_squared_error(y_true, val_preds)))
     mae_val  = float(mean_absolute_error(y_true, val_preds))
     return rmse_val, mae_val, eval_kind, len(y_true), y_true
@@ -200,6 +203,34 @@ def _get_feat_cols(df, target_col):
             if c != target_col
             and pd.api.types.is_numeric_dtype(df[c])
             and df[c].isna().mean() < MAX_MISS_RATE]
+
+
+def _poly_top_feats_by_corr(df_source, feat_cols, target_col, top_k):
+    """多項式Ridge用の top-k 特徴選択。中-M2: 以前は生スケール分散ベース(np.nanvar)だった
+    ため、mm単位の列がkm単位の列にスケールの違いだけで必ず勝ち、選択が実質無意味だった。
+    ターゲットとの絶対相関(ペアワイズ欠損除外)ベースに変更する。相関が計算できない列
+    (有効ペア2点未満・分散ゼロ等)はランキング対象から除外する。"""
+    y = pd.to_numeric(df_source[target_col], errors="coerce").values.astype(float)
+    scores = []
+    for c in feat_cols:
+        x = pd.to_numeric(df_source[c], errors="coerce").values.astype(float)
+        mask = np.isfinite(x) & np.isfinite(y)
+        if mask.sum() < 2:
+            continue
+        xm, ym = x[mask], y[mask]
+        if np.std(xm) < 1e-12 or np.std(ym) < 1e-12:
+            continue
+        corr = np.corrcoef(xm, ym)[0, 1]
+        if not np.isfinite(corr):
+            continue
+        scores.append((c, abs(float(corr))))
+    if not scores:
+        # 相関を計算できる列が1つもない場合のフォールバック: 元の列順で先頭top_kを使う
+        return list(feat_cols[:top_k])
+    scores.sort(key=lambda t: t[1], reverse=True)
+    chosen = set(c for c, _ in scores[:top_k])
+    # 元の列順を維持する(既存の sorted(top_idx) と同じ並び規約)
+    return [c for c in feat_cols if c in chosen]
 
 
 def _find_constant_and_duplicate_cols(df, feat_cols):
@@ -744,11 +775,8 @@ def _try_linear(df_train, df_val, target_col, model_dir, y_transform='none', y_p
             df_full = df_all
             n_splits = len(splits)
             medians_full = df_full[feat_cols].median()
-            X_imp = df_full[feat_cols].fillna(medians_full).values
-            variances = np.nanvar(X_imp, axis=0)
             top_k = min(len(feat_cols), POLY_MAX_FEATS)
-            top_idx = np.argsort(variances)[::-1][:top_k]
-            top_feats = [feat_cols[i] for i in sorted(top_idx)]
+            top_feats = _poly_top_feats_by_corr(df_full, feat_cols, target_col, top_k)
             med_top = df_full[top_feats].median()
 
             oof_preds = np.zeros(len(df_full))
@@ -809,10 +837,8 @@ def _try_linear(df_train, df_val, target_col, model_dir, y_transform='none', y_p
         eval_kind = "val" if df_val is not None else "train"
 
         if use_poly:
-            variances = np.nanvar(X_tr, axis=0)
             top_k = min(len(feat_cols), POLY_MAX_FEATS)
-            top_idx = np.argsort(variances)[::-1][:top_k]
-            top_feats = [feat_cols[i] for i in sorted(top_idx)]
+            top_feats = _poly_top_feats_by_corr(df_train, feat_cols, target_col, top_k)
             X_top = df_train[top_feats].fillna(medians[top_feats]).values
 
             scaler = RobustScaler()
@@ -2035,6 +2061,20 @@ if __name__ == '__main__':
     _emit_progress(3, "CSVを読み込み中")
     df = _read_csv_with_encoding_fallback(csv_path)
 
+    # 低-L3: 列名の前後空白除去(_read_csv_with_encoding_fallback内)後に重複列名が
+    # 生じていないか検証する。重複したままだと df[col] がDataFrameを返す等、
+    # 後続処理全体が不定動作になるため、黙って進めず明示エラーにする。
+    dup_col_names = df.columns[df.columns.duplicated()].unique().tolist()
+    if dup_col_names:
+        print(f"ERROR: 列名が重複しています（前後空白を除去後）: {dup_col_names}", flush=True)
+        sys.exit(1)
+
+    # 中-M7: 完全重複行の検出（削除はしない・警告のみ）。シャッフルKFoldでは同一行が
+    # train/val双方に入り得るため、重複が多いデータほどOOF/検証R²が楽観化しやすい。
+    n_dup_rows = int(df.duplicated().sum())
+    if n_dup_rows > 0:
+        print(f"[Python] 重複行を検出: {n_dup_rows} 件（削除はせず学習に使用します）", flush=True)
+
     # ── ターゲット解決・検証（カテゴリエンコードより前） ─────────────────────
     df, target_column, n_target_na = _resolve_and_validate_target(df, target_column)
 
@@ -2364,12 +2404,15 @@ if __name__ == '__main__':
         iqr_mult_used = OUTLIER_IQR_MULT if thorough else OUTLIER_IQR_QUICK
         ow = f"Y 外れ値 {n_outliers} 行を許容範囲内に補正しました（IQR×{iqr_mult_used}）。"
         data_warning = (data_warning + " " + ow) if data_warning else ow
+    if n_dup_rows > 0:
+        dw = f"重複行が{n_dup_rows}件あります。評価が楽観的になる可能性があります。"
+        data_warning = (data_warning + " " + dw) if data_warning else dw
 
     result = {
         "r2":                 r2_report,
         "r2_raw":             r2_raw,
-        "rmse":               round(rmse_val, 4),
-        "mae":                round(mae_val, 4),
+        "rmse":               round(rmse_val, 4) if rmse_val is not None else None,
+        "mae":                round(mae_val, 4) if mae_val is not None else None,
         "best_model":         best_name,
         "model_type":         model_type,
         "feature_importance": feat_list,
@@ -2380,6 +2423,10 @@ if __name__ == '__main__':
         "preset":             strategy,
         "data_warning":       data_warning,
         "r2_interpretation":  _r2_interpretation(r2_report),
+        # 低-L6: n<10 では交差検証もできず訓練スコアそのものになるため、R²の数値自体を
+        # 信頼できる指標として扱わせないためのフラグ(data_warningのテキストとは別に、
+        # フロント側がUI表現を切り替えられるよう構造化フィールドとしても持たせる)。
+        "r2_reference_only":  bool(n_rows < MIN_ROWS_FOR_SPLIT),
         "use_gp":             (model_type == 'gp'),
         "gp_format":          "pkl" if model_type == 'gp' else None,
         "scatter":            scatter_data,
