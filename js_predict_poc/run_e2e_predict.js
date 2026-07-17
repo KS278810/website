@@ -72,8 +72,14 @@ const outHeaders = targetIdx === -1 ? headers.concat([model.target_col]) : heade
 const outLines = [outHeaders.join(",")];
 for (const r of dataRows) {
     const rowObj = {};
-    headers.forEach((h, i) => { rowObj[h] = toNum(r[i]); });
-    const pred = predictRow(model, rowObj);
+    const rawRow = {};
+    headers.forEach((h, i) => { rowObj[h] = toNum(r[i]); rawRow[h] = r[i]; });
+    // Phase9: rawRowを渡さないとカテゴリエンコーダ(one-hot/target encoding)が常に
+    // 「欠損」として扱われ、カテゴリ特徴を持つモデルの予測が誤る(predict-core.jsの
+    // resolveNamed/rawStringAtのコメント参照)。これまでのE2E固定データはカテゴリ列を
+    // 持たなかったため気付かれていなかった潜在バグ(tests/benchmarks/run_benchmark.pyの
+    // categorical_low/high等の合成データセットで顕在化する前に修正)。
+    const pred = predictRow(model, rowObj, rawRow);
     const predStr = Number.isFinite(pred) ? String(pred) : "";
     const outRow = r.slice();
     if (targetIdx === -1) outRow.push(predStr); else outRow[targetIdx] = predStr;
