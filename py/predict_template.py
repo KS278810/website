@@ -320,13 +320,17 @@ def _collect_required_cols(model_type: str, model_dir: str, meta: dict) -> list:
     return meta.get("feat_cols", [])
 
 
-def _to_raw_required(required_cols: list, recipe: list) -> list:
-    """必要列のうち派生特徴をそのソース列（CSV に実在すべき列）へ展開する。"""
+def _to_raw_required(required_cols: list, recipe: list, cat_encoders: list = None) -> list:
+    """必要列のうち派生特徴をそのソース列（CSV に実在すべき列）へ展開する。
+    精度レバー4: カテゴリエンコーダの生成列(one-hot indicator名やtarget-encoding後の
+    元列名)もさらに source_col まで1段解決する(native/JS版 raw_source_for と同一仕様)。"""
     by_name = {r["name"]: r for r in recipe}
+    cat_src = {c["feature_name"]: c["source_col"] for c in (cat_encoders or [])}
     raw, seen = [], set()
     for c in required_cols:
         srcs = by_name[c].get("cols", []) if c in by_name else [c]
         for s in srcs:
+            s = cat_src.get(s, s)
             if s and s not in seen:
                 seen.add(s)
                 raw.append(s)
@@ -367,14 +371,27 @@ if __name__ == '__main__':
     round_output = postprocess.get("round_output", False)
     print(f"[Robot] モデル: {meta.get('model_label', model_type)}", flush=True)
 
-    # カテゴリカル列エンコーディング（モデル入力用複製 df_model にのみ適用）
+    # カテゴリカル列エンコーディング（モデル入力用複製 df_model にのみ適用）。
+    # 精度レバー4/.treg v5: cat_encoders は train_bridge._prepare_categoricals /
+    # _fit_target_encoders が生成したリスト形式(各要素が {"feature_name","source_col",
+    # "method": "onehot"|"target", ...}) に刷新済み。onehot は生成indicator列
+    # (feature_name)を新規追加し元列は残す(参照だけなら害はない。feat_colsに
+    # 元列名が含まれることはない)、target は元列を数値へ置換する。
     if cat_encoders:
-        for col, classes in cat_encoders.items():
-            if col in df_model.columns:
-                class_to_idx = {c: i for i, c in enumerate(classes)}
-                df_model[col] = df_model[col].fillna('__NaN__').astype(str).map(
-                    lambda x, m=class_to_idx: m.get(x, 0))
-        print(f"[Robot] カテゴリ列エンコード: {list(cat_encoders.keys())}", flush=True)
+        applied_cols = set()
+        for spec in cat_encoders:
+            col = spec.get("source_col")
+            if col not in df_model.columns:
+                continue
+            applied_cols.add(col)
+            s_filled = df_model[col].fillna('__NaN__').astype(str)
+            if spec.get("method") == "onehot":
+                df_model[spec["feature_name"]] = (s_filled == spec["class_value"]).astype(float)
+            else:  # target encoding
+                m, default = spec.get("map", {}), spec.get("default", 0.0)
+                df_model[col] = s_filled.map(lambda v, m=m, d=default: m.get(v, d)).astype(float)
+        if applied_cols:
+            print(f"[Robot] カテゴリ列エンコード: {sorted(applied_cols)}", flush=True)
 
     # X クリッピング（モデル入力用複製 df_model にのみ適用）
     if x_clip:
@@ -399,7 +416,7 @@ if __name__ == '__main__':
     # 学習時の特徴量列が予測CSVに欠けていないか検査（欠けていても median 補完で続行）
     # 派生特徴はソース列（CSV に実在すべき生列）に展開して検査する
     required_cols = _to_raw_required(
-        _collect_required_cols(model_type, model_dir, meta), derived_recipe)
+        _collect_required_cols(model_type, model_dir, meta), derived_recipe, cat_encoders)
     missing_cols = [c for c in required_cols if c not in df.columns]
     if missing_cols:
         print(f"[Robot] 警告: 学習時の列がCSVにありません → median補完で続行: {missing_cols}", flush=True)

@@ -174,6 +174,9 @@
 const MT_LINEAR = 0, MT_LGBM = 1, MT_GP = 2, MT_MLP = 3, MT_LINEAR_POLY = 4, MT_BLEND = 5;
 const YT_NONE = 0, YT_LOG1P = 1, YT_YEO_JOHNSON = 2;
 const DOP_MUL = 0, DOP_SQ = 1, DOP_SIGN = 2;
+const CAT_ONEHOT = 0, CAT_TARGET = 1;
+// train_bridge._prepare_categoricals/_fit_target_encoders と同一のNaN代替文字列。
+const CAT_NAN_SENTINEL = "__NaN__";
 
 class Reader {
     constructor(buf) {
@@ -238,6 +241,8 @@ function loadTreg(buf, depth = 0) {
         n_feat: r.u32(),
         derived: [],
         derived_idx: new Map(),
+        cat_encoders: [],
+        cat_idx: new Map(),
         y_transform: YT_NONE, yeo_lambda: 1.0,
         round_output: 0, smear: 1.0,
         y_clip_lo: -3.4e38, y_clip_hi: 3.4e38,
@@ -246,7 +251,7 @@ function loadTreg(buf, depth = 0) {
         linear: null, gp: null, mlp: null, lgbm: null,
     };
     const d = model.n_feat;
-    if (model.file_version > 4) throw new Error("unsupported (future) .treg version");
+    if (model.file_version > 5) throw new Error("unsupported (future) .treg version");
     // blend(アンサンブル)は自身の直接の特徴ベクトルを持たない(各メンバーが個別に持つ)ため
     // n_feat=0 が正当な値になる。それ以外の型は従来通り 1 以上を要求する。
     if (d > 100000 || (model.type !== MT_BLEND && d < 1)) throw new Error("bad n_feat");
@@ -262,6 +267,36 @@ function loadTreg(buf, depth = 0) {
             if (r.fail || df.op > 2) throw new Error("bad derived feature block");
             model.derived.push(df);
             model.derived_idx.set(df.name, model.derived.length - 1);
+        }
+    }
+
+    // v5: カテゴリエンコーダ（精度レバー4/.treg v5。predict_native_v2.cpp load_treg と同一仕様）
+    if (model.file_version >= 5) {
+        const nCat = r.u32();
+        if (r.fail || nCat > 100000) throw new Error("bad cat_encoders count");
+        for (let i = 0; i < nCat; i++) {
+            const method = r.u8();
+            const feature_name = r.str();
+            const source_col = r.str();
+            const c = { method, feature_name, source_col, class_value: "", target_map: new Map(), target_default: 0.0 };
+            if (method === CAT_ONEHOT) {
+                c.class_value = r.str();
+            } else if (method === CAT_TARGET) {
+                const nMap = r.u32();
+                if (r.fail || nMap > 1000000) throw new Error("bad cat target map count");
+                for (let k = 0; k < nMap; k++) {
+                    const key = r.str();
+                    const val = r.f32();
+                    if (r.fail) throw new Error("truncated cat target map");
+                    c.target_map.set(key, val);
+                }
+                c.target_default = r.f32();
+            } else {
+                throw new Error("bad cat encoder method");
+            }
+            if (r.fail) throw new Error("truncated cat_encoders block");
+            model.cat_encoders.push(c);
+            model.cat_idx.set(feature_name, model.cat_encoders.length - 1);
         }
     }
 
@@ -405,18 +440,42 @@ function loadTreg(buf, depth = 0) {
     return model;
 }
 
-function clippedSource(row, col, lo, hi) {
-    const v = row[col];
+// rawRow: CSVの生文字列(colname→string)。カテゴリエンコーダのマッチングは文字列同士で
+// 行うため必要(数値化済みの row だけでは元のカテゴリ文字列が失われている)。
+function rawStringAt(rawRow, col) {
+    if (!rawRow) return CAT_NAN_SENTINEL;
+    const v = rawRow[col];
+    return (v === undefined || v === null || v === "") ? CAT_NAN_SENTINEL : String(v);
+}
+
+// 名前解決: feat_cols/派生特徴の col_a・col_b がカテゴリエンコーダの生成列(one-hot
+// indicator名、またはtarget-encoding後の元列名)を指す場合はそちらを優先し、それ以外は
+// 通常の数値列として row から引く(predict-core.js resolveNamed と同一仕様)。
+function resolveNamed(model, name, row, rawRow) {
+    const idx = model.cat_idx.get(name);
+    if (idx !== undefined) {
+        const c = model.cat_encoders[idx];
+        const raw = rawStringAt(rawRow, c.source_col);
+        if (c.method === CAT_ONEHOT) return raw === c.class_value ? 1.0 : 0.0;
+        return c.target_map.has(raw) ? c.target_map.get(raw) : c.target_default;
+    }
+    const v = row[name];
     if (v === undefined || v === null || Number.isNaN(v)) return NaN;
+    return v;
+}
+
+function clippedSource(model, row, rawRow, col, lo, hi) {
+    const v = resolveNamed(model, col, row, rawRow);
+    if (Number.isNaN(v)) return NaN;
     return Math.min(Math.max(v, lo), hi);
 }
 
-function computeDerived(df, row) {
-    const a = clippedSource(row, df.col_a, df.a_lo, df.a_hi);
+function computeDerived(model, df, row, rawRow) {
+    const a = clippedSource(model, row, rawRow, df.col_a, df.a_lo, df.a_hi);
     if (Number.isNaN(a)) return NaN;
     let v;
     if (df.op === DOP_MUL) {
-        const b = clippedSource(row, df.col_b, df.b_lo, df.b_hi);
+        const b = clippedSource(model, row, rawRow, df.col_b, df.b_lo, df.b_hi);
         if (Number.isNaN(b)) return NaN;
         v = a * b;
     } else if (df.op === DOP_SQ) {
@@ -510,28 +569,28 @@ function predictLinearPoly(m, x, d) {
     return sum;
 }
 
-function predictBlend(blend, row) {
+function predictBlend(blend, row, rawRow) {
     // 各メンバーは自身の型・特徴量・y変換・(後処理なしの)個別予測を完結して持つため、
     // predictRow を再帰的に呼んで得た「実スケールの予測」を重み付き和するだけでよい。
     // 最終的な smear/y_clip/round_output は呼び出し元の predictRow(外側モデル)側で
     // 一度だけ適用される。
     let sum = 0.0;
     for (const mem of blend.members) {
-        sum += mem.weight * predictRow(mem.model, row);
+        sum += mem.weight * predictRow(mem.model, row, rawRow);
     }
     return sum;
 }
 
-function buildFeatureVector(model, row) {
+function buildFeatureVector(model, row, rawRow) {
     const d = model.feat_cols.length;
     const x = new Float32Array(d);
     for (let i = 0; i < d; i++) {
         const name = model.feat_cols[i];
         let val = NaN;
         if (model.derived_idx.has(name)) {
-            val = computeDerived(model.derived[model.derived_idx.get(name)], row);
-        } else if (row[name] !== undefined && row[name] !== null && !Number.isNaN(row[name])) {
-            val = row[name];
+            val = computeDerived(model, model.derived[model.derived_idx.get(name)], row, rawRow);
+        } else {
+            val = resolveNamed(model, name, row, rawRow);
         }
         if (Number.isNaN(val)) {
             val = model.medians.has(name) ? model.medians.get(name) : 0.0;
@@ -565,8 +624,8 @@ function roundHalfAwayFromZero(x) {
     return Math.sign(x) * Math.floor(Math.abs(x) + 0.5);
 }
 
-function predictRow(model, row) {
-    const x = buildFeatureVector(model, row);
+function predictRow(model, row, rawRow) {
+    const x = buildFeatureVector(model, row, rawRow);
     const d = model.feat_cols.length;
     let pred;
     if (model.type === MT_LGBM) {
@@ -580,7 +639,7 @@ function predictRow(model, row) {
     } else if (model.type === MT_LINEAR_POLY) {
         pred = predictLinearPoly(model.linearPoly, x, d);
     } else if (model.type === MT_BLEND) {
-        pred = predictBlend(model.blend, row);
+        pred = predictBlend(model.blend, row, rawRow);
     } else {
         throw new Error("unknown model type");
     }
@@ -653,6 +712,13 @@ function toNum(s) {
    中-M4b: blend(アンサンブル)は自身の feat_cols が空([])のため、以前はここで
    列欠損警告が絶対に出なかった。全メンバーを再帰してunionを取る
    (C++版 predict_native_v2.cpp の collect_required_raw_columns と同一仕様)。 */
+// feat名(生列/派生特徴出力名/カテゴリエンコーダ生成名のいずれか)から、CSVに実在すべき
+// 「生の」列名へ1段解決する(C++版 raw_source_for と同一仕様)。
+function rawSourceFor(model, name) {
+    const idx = model.cat_idx.get(name);
+    return idx !== undefined ? model.cat_encoders[idx].source_col : name;
+}
+
 function rawRequiredColumns(model) {
     const set = new Set();
     if (model.type === MT_BLEND) {
@@ -664,10 +730,10 @@ function rawRequiredColumns(model) {
     for (const name of model.feat_cols) {
         if (model.derived_idx.has(name)) {
             const df = model.derived[model.derived_idx.get(name)];
-            set.add(df.col_a);
-            if (df.op === DOP_MUL) set.add(df.col_b);
+            set.add(rawSourceFor(model, df.col_a));
+            if (df.op === DOP_MUL) set.add(rawSourceFor(model, df.col_b));
         } else {
-            set.add(name);
+            set.add(rawSourceFor(model, name));
         }
     }
     return Array.from(set);
@@ -686,8 +752,12 @@ function runPrediction(model, headers, dataRows) {
     for (let ri = 0; ri < dataRows.length; ri++) {
         const r = dataRows[ri];
         const rowObj = {};
-        for (let hi = 0; hi < headers.length; hi++) rowObj[headers[hi]] = toNum(r[hi]);
-        const pred = predictRow(model, rowObj);
+        const rawRowObj = {};
+        for (let hi = 0; hi < headers.length; hi++) {
+            rowObj[headers[hi]] = toNum(r[hi]);
+            rawRowObj[headers[hi]] = r[hi];
+        }
+        const pred = predictRow(model, rowObj, rawRowObj);
         const predStr = Number.isFinite(pred) ? String(pred) : "";
         const outRow = r.slice();
         if (targetIdx === -1) outRow.push(predStr); else outRow[targetIdx] = predStr;

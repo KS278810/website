@@ -608,27 +608,103 @@ def _apply_y_winsorize(df: pd.DataFrame, target_col: str, lo: float, hi: float):
 
 
 # ─── カテゴリカル列エンコーディング ──────────────────────────────────────────
+# 高-H4/精度レバー4: 旧実装は辞書順ordinalを全モデルに連続量として投入し、未知カテゴリは
+# 先頭クラス(0)と衝突し、カーディナリティ上限もなかった。刷新版:
+#   - pd.to_numeric で90%以上数値化できる列は数値列として扱う(誤ってカテゴリ扱いしない)
+#   - カーディナリティ<=10: one-hot(未知カテゴリは全ゼロ。target非依存で安全にグローバル適用)
+#   - カーディナリティ>10かつ行数の50%以下: fold内target encoding(スムージング付き。
+#     target統計を使うためfold-train統計のみで fit しないとOOFがリークする。呼び出し側の
+#     main()で「最終用(df_train fit)」と「fold-local用(fold-trainのみfit)」を分けて
+#     _fit_target_encoders を2回呼ぶ設計にしている)
+#   - カーディナリティ>行数の50%: 除外(data_warningに記載)
+CAT_ONEHOT_MAX_CARD    = 10     # これ以下ならone-hot
+CAT_DROP_CARD_FRAC     = 0.50   # nuniqueがこの割合(行数比)を超えたら列を除外
+CAT_NUMERIC_COERCE_MIN = 0.90   # pd.to_numeric成功率がこれ以上なら数値列として扱う
+CAT_TARGET_ENC_SMOOTH  = 20.0   # target encodingのスムージング強度(擬似サンプル数)
+CAT_NAN_SENTINEL       = '__NaN__'
 
-def _encode_categoricals(df, target_col):
-    cat_cols = [c for c in df.columns
-                if c != target_col
-                and (df[c].dtype == object or str(df[c].dtype) in ('bool', 'boolean'))]
-    encoders = {}
-    for col in cat_cols:
-        classes = sorted(df[col].fillna('__NaN__').astype(str).unique().tolist())
-        encoders[col] = classes
-        print(f"[CatEnc] {col}: {len(classes)} クラス", flush=True)
-    return encoders
 
-
-def _apply_cat_encoders(df, encoders):
+def _prepare_categoricals(df, target_col):
+    """object/bool dtype列を走査し、(df, onehot_specs, target_cols, dropped_cols) を返す。
+    df は onehot 列(target非依存で安全にグローバル適用可能)を実際に追加・元列削除した
+    コピー。target_cols は「まだ生の文字列(NaNは CAT_NAN_SENTINEL で埋め済み)のまま」
+    残す列名リストで、呼び出し側が split 後に _fit_target_encoders/_apply_target_encoders
+    で fold-aware に数値化する(target統計を使うため split 前にfitするとリークする)。
+    onehot_specs の要素: {"feature_name","source_col","class_value"}(生成された
+    indicator列名 → 元列・比較対象クラス値)。"""
     df = df.copy()
-    for col, classes in encoders.items():
+    # 低-互換性: pandas 3.x はデフォルトで文字列列を object でなく専用の str dtype に
+    # する(pandas 2.x/embed版は object のまま)。dtype名の決め打ち比較ではバージョンに
+    # よって取りこぼすため、「数値dtypeでない」ことを条件にする(is_numeric_dtypeは
+    # bool/objectを含め非数値を一貫して除外する)。
+    cat_cols = [c for c in df.columns
+                if c != target_col and not pd.api.types.is_numeric_dtype(df[c])]
+    onehot_specs, target_cols, dropped_cols = [], [], []
+    n_rows = len(df)
+    for col in cat_cols:
+        coerced = pd.to_numeric(df[col], errors='coerce')
+        frac_numeric = float(coerced.notna().mean()) if n_rows > 0 else 0.0
+        if frac_numeric >= CAT_NUMERIC_COERCE_MIN:
+            df[col] = coerced
+            print(f"[CatEnc] {col}: {frac_numeric*100:.0f}%が数値化可能 → 数値列として扱う", flush=True)
+            continue
+        s_filled = df[col].fillna(CAT_NAN_SENTINEL).astype(str)
+        classes = sorted(s_filled.unique().tolist())
+        card = len(classes)
+        if card > max(1, int(n_rows * CAT_DROP_CARD_FRAC)):
+            dropped_cols.append(col)
+            df = df.drop(columns=[col])
+            print(f"[CatEnc] {col}: カーディナリティ{card}が行数の{CAT_DROP_CARD_FRAC*100:.0f}%超 → 除外", flush=True)
+            continue
+        if card <= CAT_ONEHOT_MAX_CARD:
+            print(f"[CatEnc] {col}: {card}クラス → one-hot", flush=True)
+            for cls in classes:
+                fname = f"{col}=={cls}"
+                onehot_specs.append({"feature_name": fname, "source_col": col,
+                                     "class_value": cls, "method": "onehot"})
+                df[fname] = (s_filled == cls).astype(np.float64)
+            df = df.drop(columns=[col])
+        else:
+            print(f"[CatEnc] {col}: {card}クラス → fold内target encoding(後段でfit)", flush=True)
+            df[col] = s_filled
+            target_cols.append(col)
+    return df, onehot_specs, target_cols, dropped_cols
+
+
+def _fit_target_encoders(df_fit, target_col, target_cols, smoothing=CAT_TARGET_ENC_SMOOTH):
+    """target_cols(生文字列、CAT_NAN_SENTINEL埋め済み)を df_fit(必ず学習側のみ。
+    検証/評価側の行を含めるとOOFがリークする)でfitする。スムージング:
+    encoded = (count*cat_mean + smoothing*global_mean) / (count+smoothing)。
+    未知カテゴリ・fit時に見なかったNaNは global_mean にフォールバックする。"""
+    specs = []
+    if not target_cols:
+        return specs
+    y = pd.to_numeric(df_fit[target_col], errors='coerce').astype(float)
+    global_mean = float(np.nanmean(y.values)) if len(y) else 0.0
+    for col in target_cols:
+        if col not in df_fit.columns:
+            continue
+        s = df_fit[col].astype(str)
+        grp = y.groupby(s)
+        counts = grp.count()
+        means = grp.mean()
+        smoothed = (counts * means + smoothing * global_mean) / (counts + smoothing)
+        cmap = {str(k): float(v) for k, v in smoothed.items()}
+        specs.append({"feature_name": col, "source_col": col, "method": "target",
+                      "map": cmap, "default": global_mean})
+    return specs
+
+
+def _apply_target_encoders(df, specs):
+    if not specs:
+        return df
+    df = df.copy()
+    for spec in specs:
+        col = spec["source_col"]
         if col not in df.columns:
             continue
-        class_to_idx = {c: i for i, c in enumerate(classes)}
-        df[col] = df[col].fillna('__NaN__').astype(str).map(
-            lambda x, m=class_to_idx: m.get(x, 0))
+        m, default = spec["map"], spec["default"]
+        df[col] = df[col].astype(str).map(lambda v, m=m, d=default: m.get(v, d)).astype(np.float64)
     return df
 
 
@@ -1777,13 +1853,15 @@ _TREG_OP_MAP   = {'mul': 0, 'sq': 1, 'sign': 2}
 
 def _write_treg_stream(f, export_type, feat_cols, medians, payload, model_dir,
                        target_col, y_transform, y_params, smear, y_clip, round_output,
-                       x_clip_all, derived_recipe):
+                       x_clip_all, derived_recipe, cat_encoders_all=None):
     """1モデル分の完全な .treg バイト列（'TREG' ヘッダ込み）をファイルライクな f に書く。
     export_type=='blend' の場合、payload['members'] の各要素を「後処理なしの自己完結した
     入れ子 .treg ブロブ」として再帰的に埋め込む（この関数自身を再帰呼び出しする）。
-    派生特徴（自動FE）を使うモデルは v4（レシピブロック付き）、それ以外は v3 で書く。"""
+    派生特徴（自動FE）を使うモデルは v4以上（レシピブロック付き）、カテゴリエンコーダを
+    使うモデルは v5（精度レバー4/.treg v5: cat_encodersブロック追加）、それ以外は v3 で書く。"""
     import struct
     n_feat = len(feat_cols)
+    cat_encoders_all = cat_encoders_all or []
 
     def _baked_scale(scale):
         # 中-M3: 読み込み側(C++/JS/predict_template.htmlインライン版)は以前
@@ -1794,11 +1872,14 @@ def _write_treg_stream(f, export_type, feat_cols, medians, payload, model_dir,
         # 統一する(3実装の数値挙動を揃えることが最重要)。
         return np.maximum(np.asarray(scale, dtype=np.float64), 1e-8).astype(np.float32)
 
-    # このモデルが実際に使う派生特徴のみ書き出す（ソース列の x_clip 境界も同梱）
+    # このモデルが実際に使う派生特徴・カテゴリエンコーダのみ書き出す
+    # （ソース列の x_clip 境界も同梱。derivedの col_a/col_b が one-hot/target 由来の
+    #   名前を指すケースも、読込側が feat 解決と同じ優先順位(cat→raw)で解決する）
     feat_set = set(feat_cols)
     used_derived = [r for r in derived_recipe
                     if r['name'] in feat_set and r['op'] in _TREG_OP_MAP]
-    file_version = 4 if used_derived else 3
+    used_cat = [c for c in cat_encoders_all if c['feature_name'] in feat_set]
+    file_version = 5 if used_cat else (4 if used_derived else 3)
 
     f.write(b'TREG')
     f.write(struct.pack('<BB', file_version, _TREG_TYPE_MAP[export_type]))
@@ -1819,6 +1900,26 @@ def _write_treg_stream(f, export_type, feat_cols, medians, payload, model_dir,
             f.write(struct.pack('<ff', float(a_lo), float(a_hi)))
             _write_str_treg(f, col_b)
             f.write(struct.pack('<ff', float(b_lo), float(b_hi)))
+
+    # v5: カテゴリエンコーダブロック（精度レバー4）。one-hot は生成indicator列(feature_name)
+    # ごとに1エントリ(比較対象クラス値1つ)、targetはsource_col自体をfeature_nameとして
+    # 1エントリ(カテゴリ→値の全マップ+未知カテゴリ用default)を持つ。
+    if file_version >= 5:
+        f.write(struct.pack('<I', len(used_cat)))
+        for c in used_cat:
+            method = 0 if c.get('method') == 'onehot' else 1
+            f.write(struct.pack('<B', method))
+            _write_str_treg(f, c['feature_name'])
+            _write_str_treg(f, c['source_col'])
+            if method == 0:
+                _write_str_treg(f, c['class_value'])
+            else:
+                cmap = c['map']
+                f.write(struct.pack('<I', len(cmap)))
+                for k, v in cmap.items():
+                    _write_str_treg(f, k)
+                    f.write(struct.pack('<f', float(v)))
+                f.write(struct.pack('<f', float(c['default'])))
 
     if export_type == 'linear':
         d = payload
@@ -1910,7 +2011,7 @@ def _write_treg_stream(f, export_type, feat_cols, medians, payload, model_dir,
             _write_treg_stream(buf, m['export_type'], m['feat_cols'], m['medians'], m['payload'],
                                model_dir, target_col, y_transform, y_params,
                                1.0, (-X_CLIP_SENTINEL, X_CLIP_SENTINEL), False,
-                               x_clip_all, derived_recipe)
+                               x_clip_all, derived_recipe, cat_encoders_all)
             blob = buf.getvalue()
             f.write(struct.pack('<f', float(m['weight'])))
             f.write(struct.pack('<I', len(blob)))
@@ -1952,12 +2053,13 @@ def _write_treg_stream(f, export_type, feat_cols, medians, payload, model_dir,
 
 def _export_treg(model_type, model_dir, target_col, y_transform='none', y_params=None,
                  smear=1.0, y_clip=(-X_CLIP_SENTINEL, X_CLIP_SENTINEL),
-                 round_output=False, x_clip_all=None, derived_recipe=None):
+                 round_output=False, x_clip_all=None, derived_recipe=None, cat_encoders_all=None):
     """モデル pkl / sidecar から実使用列・median を自己取得し、次元整合した .treg を書く。
     linear(poly含む)/lgbm/gp/mlp/rf/xt 全種別に対応(blend は _export_treg_blend を使う)。"""
     y_params = y_params or {}
     x_clip_all = x_clip_all or {}
     derived_recipe = derived_recipe or []
+    cat_encoders_all = cat_encoders_all or []
     out_path = os.path.join(model_dir, "model.treg")
     tmp_path = out_path + ".tmp"
 
@@ -1971,7 +2073,7 @@ def _export_treg(model_type, model_dir, target_col, y_transform='none', y_params
         with open(tmp_path, 'wb') as f:
             _write_treg_stream(f, export_type, feat_cols, medians, payload, model_dir,
                                target_col, y_transform, y_params, smear, y_clip, round_output,
-                               x_clip_all, derived_recipe)
+                               x_clip_all, derived_recipe, cat_encoders_all)
 
         os.replace(tmp_path, out_path)
         size_kb = os.path.getsize(out_path) // 1024
@@ -1989,7 +2091,7 @@ def _export_treg(model_type, model_dir, target_col, y_transform='none', y_params
 
 def _export_treg_blend(model_dir, target_col, candidates, y_transform='none', y_params=None,
                        smear=1.0, y_clip=(-X_CLIP_SENTINEL, X_CLIP_SENTINEL),
-                       round_output=False, x_clip_all=None, derived_recipe=None):
+                       round_output=False, x_clip_all=None, derived_recipe=None, cat_encoders_all=None):
     """blend_meta.pkl のメンバー構成をもとに、各メンバーを自己完結した入れ子 .treg として
     埋め込んだアンサンブル用 .treg を書く。1メンバーでも書き出せなければ全体を失敗とする
     （部分的なブレンドは学習時に最適化した重み構成と乖離するため中途半端な出力を避ける）。"""
@@ -1997,6 +2099,7 @@ def _export_treg_blend(model_dir, target_col, candidates, y_transform='none', y_
     y_params = y_params or {}
     x_clip_all = x_clip_all or {}
     derived_recipe = derived_recipe or []
+    cat_encoders_all = cat_encoders_all or []
     out_path = os.path.join(model_dir, "model.treg")
     tmp_path = out_path + ".tmp"
 
@@ -2026,7 +2129,7 @@ def _export_treg_blend(model_dir, target_col, candidates, y_transform='none', y_
         with open(tmp_path, 'wb') as f:
             _write_treg_stream(f, 'blend', [], {}, {"members": members}, model_dir,
                                target_col, y_transform, y_params, smear, y_clip, round_output,
-                               x_clip_all, derived_recipe)
+                               x_clip_all, derived_recipe, cat_encoders_all)
 
         os.replace(tmp_path, out_path)
         size_kb = os.path.getsize(out_path) // 1024
@@ -2078,10 +2181,12 @@ if __name__ == '__main__':
     # ── ターゲット解決・検証（カテゴリエンコードより前） ─────────────────────
     df, target_column, n_target_na = _resolve_and_validate_target(df, target_column)
 
-    cat_encoders = _encode_categoricals(df, target_column)
-    if cat_encoders:
-        print(f"[Python] カテゴリ列エンコード: {list(cat_encoders.keys())}", flush=True)
-        df = _apply_cat_encoders(df, cat_encoders)
+    df, cat_onehot_specs, cat_target_cols, cat_dropped_cols = _prepare_categoricals(df, target_column)
+    if cat_onehot_specs or cat_target_cols:
+        print(f"[Python] カテゴリ列検出: one-hot={sorted(set(s['source_col'] for s in cat_onehot_specs))} "
+              f"target_enc={cat_target_cols}", flush=True)
+    if cat_dropped_cols:
+        print(f"[Python] カテゴリ列除外(高カーディナリティ): {cat_dropped_cols}", flush=True)
 
     n_rows = len(df)
     print(f"[Python] {n_rows} 行 / {df.shape[1]} 列 / モード: {'じっくり' if thorough else 'お急ぎ'} / CPU並列: {num_jobs}", flush=True)
@@ -2143,13 +2248,32 @@ if __name__ == '__main__':
             df_val = _apply_x_clip(df_val, x_clip_bounds)
     df_clipped = _apply_x_clip(df, x_clip_bounds) if x_clip_bounds else df
 
+    # ── fold-local ソースの確保(target encodingはtarget統計に依存するため、この時点の
+    #    df_clipped_base では cat_target_cols をまだ「生文字列(CAT_NAN_SENTINEL埋め済み)」
+    #    のまま残しておく。以降の「最終用」lineage(df_train/df_val/df_clipped)にのみ
+    #    df_trainでfitしたtarget encodingを適用し、fold-localなtarget encodingは直後の
+    #    fold-loopでfold毎にやり直す(高-H1と同じ理由でのリーク防止)。
+    df_clipped_base = df_clipped  # FE適用前・target-encoding適用前(fold-local共有ソース)
+
+    # ── カテゴリ列 target encoding（最終書き出しモデル用。df_train(=fold0-train)でfit） ──
+    #    精度レバー4: high-cardinality列はfold-train統計のみでfitしないとOOFがリークする。
+    cat_target_encoders_final = _fit_target_encoders(df_train, target_column, cat_target_cols)
+    if cat_target_encoders_final:
+        df_train   = _apply_target_encoders(df_train, cat_target_encoders_final)
+        df_clipped = _apply_target_encoders(df_clipped, cat_target_encoders_final)
+        if df_val is not None:
+            df_val = _apply_target_encoders(df_val, cat_target_encoders_final)
+
+    # .treg/model_meta.json に書き出す最終カテゴリエンコーダ一覧(one-hotはtarget非依存で
+    # 既にグローバル適用済みなのでそのまま、targetは上で df_train fit した最終版を使う)。
+    cat_encoders_all = cat_onehot_specs + cat_target_encoders_final
+
     # ── 自動特徴量エンジニアリング（最終書き出しモデル用、thorough のみ、x_clip 後の値から生成） ──
     #    高-H1: この derived_recipe は df_train(=fold0-train)でfitする。最終書き出しモデルの
     #    学習にのみ使う分には評価対象ではないためリークにならないが、以前はこれをそのまま
     #    OOF全fold共有の df_all_for_models に適用しており、fold1以降の検証行がfold0-trainの
     #    recipe選定に混入してOOF R²が選択バイアスで上振れしていた。OOF評価用の特徴選定は
     #    直後の fold-local ブロックで fold 毎に(そのfoldの検証行を一切見ずに)作り直す。
-    df_clipped_base = df_clipped  # FE適用前（fold-local FE/screeningの共有ソース）
     derived_recipe = []
     if thorough and n_rows >= FE_MIN_ROWS:
         derived_recipe = _build_derived_recipe(df_train, target_column, num_jobs=num_jobs)
@@ -2167,6 +2291,8 @@ if __name__ == '__main__':
     #    fold1以降の検証行がfold0-trainのFE・スクリーニング選定に混入してOOF R²が上振れ
     #    していた。ここでは各foldの学習側(そのfoldのva_idxを一切含まない)のみで
     #    recipe/screeningを作り直す(LGBM probeのコスト増はfold数倍になるが許容する)。
+    #    精度レバー4: target encodingも同じ理由でfold毎にfit-applyし直す(dtr_te_fitは
+    #    そのfoldのvalidation行を一切含まない)。
     df_all_per_fold = None
     screen_cols_per_fold = None
     if use_oof and have_split:
@@ -2174,11 +2300,14 @@ if __name__ == '__main__':
         df_all_per_fold = []
         screen_cols_per_fold = []
         for tr_idx, va_idx in cv_splits:
-            dtr_base = df_clipped_base.iloc[tr_idx]
+            te_fold = _fit_target_encoders(df_clipped_base.iloc[tr_idx], target_column, cat_target_cols)
+            df_clipped_base_enc = (_apply_target_encoders(df_clipped_base, te_fold)
+                                   if te_fold else df_clipped_base)
+            dtr_base = df_clipped_base_enc.iloc[tr_idx]
             recipe_fold = []
             if thorough and len(tr_idx) >= FE_MIN_ROWS:
                 recipe_fold = _build_derived_recipe(dtr_base, target_column, num_jobs=num_jobs)
-            df_fold = _apply_derived(df_clipped_base, recipe_fold) if recipe_fold else df_clipped_base
+            df_fold = _apply_derived(df_clipped_base_enc, recipe_fold) if recipe_fold else df_clipped_base_enc
             df_all_per_fold.append(df_fold)
             screen_cols_per_fold.append(
                 _lgbm_feature_screen(df_fold.iloc[tr_idx], target_column, num_jobs=num_jobs))
@@ -2378,7 +2507,7 @@ if __name__ == '__main__':
         "model_label":     best_name,
         "y_transform":     y_transform,
         "y_params":        y_params,
-        "cat_encoders":    cat_encoders,
+        "cat_encoders":    cat_encoders_all,
         "x_clip":          x_clip_bounds,
         "derived_features": derived_recipe,
         "postprocess":     {"smear": smear, "y_clip": [y_clip_lo, y_clip_hi], "round_output": round_output},
@@ -2407,6 +2536,9 @@ if __name__ == '__main__':
     if n_dup_rows > 0:
         dw = f"重複行が{n_dup_rows}件あります。評価が楽観的になる可能性があります。"
         data_warning = (data_warning + " " + dw) if data_warning else dw
+    if cat_dropped_cols:
+        cw = f"カーディナリティが行数に対して高すぎるため除外した列: {', '.join(cat_dropped_cols)}"
+        data_warning = (data_warning + " " + cw) if data_warning else cw
 
     result = {
         "r2":                 r2_report,
@@ -2431,9 +2563,12 @@ if __name__ == '__main__':
         "gp_format":          "pkl" if model_type == 'gp' else None,
         "scatter":            scatter_data,
         "y_range":            [round(float(np.min(y_raw_all)), 4), round(float(np.max(y_raw_all)), 4)],
-        # 配布ファイル（HTML/native exe）は .treg にカテゴリエンコーダを持たないため
-        # カテゴリ列を実質使えない（高-M1）。UI側でデプロイ前後に警告を出すためのフラグ。
-        "cat_columns":        list(cat_encoders.keys()) if cat_encoders else [],
+        # .treg v5（精度レバー4）以降、カテゴリ列は one-hot / target encoding として
+        # エンコーダごと配布ファイル(HTML/native exe)にも収録され、アプリ内予測と同じ
+        # 扱いを受ける。cat_columns は「検出されたカテゴリ列」の情報表示用、
+        # cat_dropped_columns は「カーディナリティが高すぎて除外された列」の警告用。
+        "cat_columns":         sorted(set(s["source_col"] for s in cat_onehot_specs) | set(cat_target_cols)),
+        "cat_dropped_columns": cat_dropped_cols,
         # 学習時に比較した候補モデル一覧（R²降順）。以前はbest_modelしかUIに出せず、
         # 「なぜこのモデルが選ばれたか」がユーザーから見えなかった(評価レポート5視点の
         # 提案項目)。r2はcandidates内のOOF/検証スコア(=表示R²と評価データが異なる場合が
@@ -2489,11 +2624,11 @@ if __name__ == '__main__':
         if dep_type == 'blend':
             ok = _export_treg_blend(model_dir, target_column, candidates, y_transform, y_params,
                                     dep_smear, (y_clip_lo, y_clip_hi), round_output, x_clip_bounds,
-                                    derived_recipe=derived_recipe)
+                                    derived_recipe=derived_recipe, cat_encoders_all=cat_encoders_all)
         else:
             ok = _export_treg(dep_type, model_dir, target_column, y_transform, y_params,
                               dep_smear, (y_clip_lo, y_clip_hi), round_output, x_clip_bounds,
-                              derived_recipe=derived_recipe)
+                              derived_recipe=derived_recipe, cat_encoders_all=cat_encoders_all)
         if ok:
             exported = True
             if dep_name != best_name:
