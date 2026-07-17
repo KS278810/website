@@ -502,7 +502,9 @@ def _read_csv_with_encoding_fallback(csv_path):
         raw = f.read()
     try:
         raw.decode('utf-8')
-        df = pd.read_csv(csv_path, encoding='utf-8')
+        # utf-8-sig: 先頭にBOM(U+FEFF)があれば除去して読む(Excelの「CSV UTF-8」既定出力対策)。
+        # BOMが無い通常のUTF-8 CSVでも挙動は変わらない(中-7 の分岐とは独立)。
+        df = pd.read_csv(csv_path, encoding='utf-8-sig')
     except UnicodeDecodeError:
         print(f"[Python] CSVがUTF-8として不正 → Shift-JIS(cp932)として読み込みます", flush=True)
         df = pd.read_csv(csv_path, encoding='cp932')
@@ -963,12 +965,13 @@ def _try_linear(df_train, df_val, target_col, model_dir, y_transform='none', y_p
                     "train_r2": round(train_r2, 4)}
             return round(oof_r2, 4), feat_list, "linear", oof_preds, info
 
-        # ── K-Fold OOF (poly): top_feats は df_full 全体で1回固定 ────────────
-        #    既知の限界(高-H1の対象外・タスク指示の対象は_build_derived_recipeと
-        #    _lgbm_feature_screenのみ): poly-Ridgeの top_feats 選定(分散/相関ベース)は
-        #    ここでは fold-local 化していない。FE有効時は特徴数が POLY_MAX_FEATS(8) を
-        #    超えて非poly分岐に流れることが大半のため実害は小さいが、raw特徴が極端に
-        #    少ないデータでは fold0-train 由来の選定バイアスが残る可能性がある。
+        # ── K-Fold OOF (poly) ────────────────────────────────────────────────
+        #    最終モデル用の top_feats は df_full 全体で1回固定(デプロイモデルは全データ
+        #    でfitするため妥当)。OOF評価自体は非poly分岐と同様に _fold_frame でfold毎の
+        #    (そのfoldの検証行を見ずにfitした)FE/encoding済みデータを使い、top_feats選定
+        #    も fold-train のみに限定して再計算する(監査#3: 以前は df_full 全体で選定した
+        #    top_feats とtarget encoding済み列をOOF評価にも使い回しており、自分のyが
+        #    焼き込まれた状態で評価されるリークがあった)。
         if do_kfold and use_poly:
             df_full = df_all
             n_splits = len(splits)
@@ -980,12 +983,15 @@ def _try_linear(df_train, df_val, target_col, model_dir, y_transform='none', y_p
             oof_preds = np.zeros(len(df_full))
             print(f"[Linear] poly K-Fold OOF ({n_splits} fold)...", flush=True)
             for fold, (tr_idx, va_idx) in enumerate(splits):
-                dtr = df_full.iloc[tr_idx]
-                dva = df_full.iloc[va_idx]
-                med_f = dtr[top_feats].median()
-                X_f = dtr[top_feats].fillna(med_f).values
+                df_fold, feat_cols_f = _fold_frame(df_full, df_all_per_fold, fold, tr_idx, target_col, feat_cols)
+                dtr = df_fold.iloc[tr_idx]
+                dva = df_fold.iloc[va_idx]
+                top_k_f = min(len(feat_cols_f), POLY_MAX_FEATS)
+                top_feats_f = _poly_top_feats_by_corr(dtr, feat_cols_f, target_col, top_k_f)
+                med_f = dtr[top_feats_f].median()
+                X_f = dtr[top_feats_f].fillna(med_f).values
                 y_f = _apply_y_transform(dtr[target_col].values, y_transform, y_params)
-                X_v = dva[top_feats].fillna(med_f).values
+                X_v = dva[top_feats_f].fillna(med_f).values
                 sc = RobustScaler()
                 po = PolynomialFeatures(degree=2, include_bias=False, interaction_only=False)
                 m  = RidgeCV(alphas=alphas_poly)

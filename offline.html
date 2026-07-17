@@ -2532,7 +2532,7 @@
             sbProgressBar.style.animation = '';
             sbProgressWrap.style.display = 'none';
             setStatusReady();
-            document.getElementById('pebMsg').textContent = String(e);
+            document.getElementById('pebMsg').textContent = translateBackendMessage(e);
             document.getElementById('predictErrorBanner').style.display = '';
             switchDashboard('trained');
             predictZone.className = 'drop-zone drop-predict-retry action-pulse';
@@ -2564,7 +2564,7 @@
     // ERROR:/PREDICT_ERROR:由来のキー付きメッセージ("key:{jsonParams}")を解析する。
     // lib.rs自前のスコープ外文言等、未知形式は解析できず null を返す(呼び出し元でrawそのまま表示)。
     function parseKeyedMessage(raw) {
-        let body = String(raw).trim().replace(/^\[Robot\]\s*/, '');
+        let body = String(raw).trim().replace(/^\[Robot\]\s*/, '').replace(/^Error:\s*/, '');
         if (body.startsWith('PREDICT_ERROR:')) body = body.slice('PREDICT_ERROR:'.length);
         else if (body.startsWith('ERROR:')) body = body.slice('ERROR:'.length);
         const m = /^([a-z0-9_]+):(\{[\s\S]*\})$/.exec(body);
