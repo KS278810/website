@@ -172,6 +172,29 @@ def _eval_metrics(val_preds, eval_kind, y_raw_all, tr_idx0, va_idx0):
     return rmse_val, mae_val, eval_kind, len(y_true), y_true
 
 
+def _candidate_r2_std(preds_arr, eval_kind, cv_splits, y_col_values):
+    """高-H3緩和: 候補モデルのfold別R²のばらつき(標準偏差)を計算する（過学習/不安定性の
+    診断用、candidate_models.r2_std）。OOF評価(eval_kind=='oof')かつfold分割が2以上ある
+    場合のみ意味を持つ。非OOF(quickの単一train/val分割)はfold概念が1つしかなく分散を
+    計算できないため0.0を返す(=「参考値なし」として扱う)。"""
+    if eval_kind != "oof" or cv_splits is None or preds_arr is None:
+        return 0.0
+    preds_arr = np.asarray(preds_arr, dtype=float)
+    if len(preds_arr) != len(y_col_values):
+        return 0.0
+    fold_r2s = []
+    for _, va_idx in cv_splits:
+        if len(va_idx) < 2:
+            continue
+        try:
+            fold_r2s.append(float(r2_score(y_col_values[va_idx], preds_arr[va_idx])))
+        except Exception:
+            continue
+    if len(fold_r2s) < 2:
+        return 0.0
+    return float(np.std(fold_r2s))
+
+
 def _get_feat_cols(df, target_col):
     return [c for c in df.columns
             if c != target_col
@@ -687,6 +710,12 @@ def _try_linear(df_train, df_val, target_col, model_dir, y_transform='none', y_p
             final_m  = RidgeCV(alphas=alphas_std)
             final_m.fit(final_sc.fit_transform(X_all), y_all)
 
+            # 高-H3緩和: 過学習診断用に、最終モデル(100%データでfit)自身の学習データに対する
+            # R²(train_r2)も記録する。OOF R²との乖離が大きいほど過学習が疑われる。
+            train_preds_t = final_m.predict(final_sc.transform(X_all))
+            train_preds = _invert_y_transform(train_preds_t, y_transform, y_params)
+            train_r2 = float(r2_score(df_full[target_col].values, train_preds))
+
             coefs = np.abs(final_m.coef_)
             total = max(coefs.sum(), 1e-9)
             feat_list = sorted(
@@ -701,7 +730,8 @@ def _try_linear(df_train, df_val, target_col, model_dir, y_transform='none', y_p
                              "feat_cols": feat_cols, "target_col": target_col,
                              "use_poly": False, "medians": med_dict}, f)
             print(f"[Linear] alpha={final_m.alpha_:.4g}", flush=True)
-            info = {"eval_kind": "oof", "used_cols": feat_cols, "medians": med_dict, "exportable": True}
+            info = {"eval_kind": "oof", "used_cols": feat_cols, "medians": med_dict, "exportable": True,
+                    "train_r2": round(train_r2, 4)}
             return round(oof_r2, 4), feat_list, "linear", oof_preds, info
 
         # ── K-Fold OOF (poly): top_feats は df_full 全体で1回固定 ────────────
@@ -747,6 +777,11 @@ def _try_linear(df_train, df_val, target_col, model_dir, y_transform='none', y_p
             model = RidgeCV(alphas=alphas_poly)
             model.fit(poly.fit_transform(scaler.fit_transform(X_all)), y_all)
 
+            # 高-H3緩和: 過学習診断用のtrain_r2(最終モデル自身の学習データに対するR²)
+            train_preds_t = model.predict(poly.transform(scaler.transform(X_all)))
+            train_preds = _invert_y_transform(train_preds_t, y_transform, y_params)
+            train_r2 = float(r2_score(df_full[target_col].values, train_preds))
+
             feat_names = poly.get_feature_names_out(top_feats)
             coefs = np.abs(model.coef_)
             total = max(coefs.sum(), 1e-9)
@@ -763,7 +798,8 @@ def _try_linear(df_train, df_val, target_col, model_dir, y_transform='none', y_p
                              "use_poly": True, "medians": med_dict}, f)
             print(f"[Linear] poly alpha={model.alpha_:.3g}", flush=True)
             # poly-Ridge も 'linear_poly' 専用フォーマットで .treg 書き出し可能
-            info = {"eval_kind": "oof", "used_cols": top_feats, "medians": med_dict, "exportable": True}
+            info = {"eval_kind": "oof", "used_cols": top_feats, "medians": med_dict, "exportable": True,
+                    "train_r2": round(train_r2, 4)}
             return round(oof_r2, 4), feat_list, "linear", oof_preds, info
 
         # ── 単一 train/val ────────────────────────────────────────────────
@@ -790,6 +826,14 @@ def _try_linear(df_train, df_val, target_col, model_dir, y_transform='none', y_p
             y_pred = _invert_y_transform(y_pred_t, y_transform, y_params)
             lin_r2 = float(r2_score(eval_df[target_col].values, y_pred))
 
+            # 高-H3緩和: 過学習診断用train_r2(このモデル自身の学習データdf_trainに対するR²)
+            if eval_kind == "train":
+                train_r2 = lin_r2  # df_val無し: eval_df==df_train のためそのまま流用
+            else:
+                train_pred_t = model.predict(poly.transform(scaler.transform(X_top)))
+                train_r2 = float(r2_score(df_train[target_col].values,
+                                          _invert_y_transform(train_pred_t, y_transform, y_params)))
+
             feat_names = poly.get_feature_names_out(top_feats)
             coefs = np.abs(model.coef_)
             total = max(coefs.sum(), 1e-9)
@@ -807,7 +851,8 @@ def _try_linear(df_train, df_val, target_col, model_dir, y_transform='none', y_p
             n_feats_poly = X_tr_s.shape[1]
             print(f"[Linear] poly R²={lin_r2:.4f}  α={model.alpha_:.3g}  poly_feats={n_feats_poly}", flush=True)
             # poly-Ridge も 'linear_poly' 専用フォーマットで .treg 書き出し可能
-            info = {"eval_kind": eval_kind, "used_cols": top_feats, "medians": med_dict, "exportable": True}
+            info = {"eval_kind": eval_kind, "used_cols": top_feats, "medians": med_dict, "exportable": True,
+                    "train_r2": round(train_r2, 4)}
             return round(lin_r2, 4), feat_list, "linear", y_pred, info
 
         # Standard Ridge (no poly)
@@ -820,6 +865,14 @@ def _try_linear(df_train, df_val, target_col, model_dir, y_transform='none', y_p
         y_pred_t = model.predict(X_val_s)
         y_pred = _invert_y_transform(y_pred_t, y_transform, y_params)
         lin_r2 = float(r2_score(eval_df[target_col].values, y_pred))
+
+        # 高-H3緩和: 過学習診断用train_r2(このモデル自身の学習データdf_trainに対するR²)
+        if eval_kind == "train":
+            train_r2 = lin_r2  # df_val無し: eval_df==df_train のためそのまま流用
+        else:
+            train_pred_t = model.predict(X_tr_s)
+            train_r2 = float(r2_score(df_train[target_col].values,
+                                      _invert_y_transform(train_pred_t, y_transform, y_params)))
 
         coefs = np.abs(model.coef_)
         total = max(coefs.sum(), 1e-9)
@@ -835,7 +888,8 @@ def _try_linear(df_train, df_val, target_col, model_dir, y_transform='none', y_p
                          "feat_cols": feat_cols, "target_col": target_col,
                          "use_poly": False, "medians": med_dict}, f)
         print(f"[Linear] R²={lin_r2:.4f}  alpha={model.alpha_:.4g}", flush=True)
-        info = {"eval_kind": eval_kind, "used_cols": feat_cols, "medians": med_dict, "exportable": True}
+        info = {"eval_kind": eval_kind, "used_cols": feat_cols, "medians": med_dict, "exportable": True,
+                "train_r2": round(train_r2, 4)}
         return round(lin_r2, 4), feat_list, "linear", y_pred, info
 
     except Exception as e:
@@ -961,6 +1015,11 @@ def _try_lgbm(df_train, df_val, target_col, model_dir, use_grid=False, use_oof=F
             final_bst = _lgb_fit(final_p, X_all, y_all)
             final_bst.save_model(os.path.join(model_dir, "lgbm_model.txt"))
 
+            # 高-H3緩和: 過学習診断用train_r2(最終モデル自身の学習データに対するR²)
+            train_preds_t = final_bst.predict(X_all)
+            train_r2 = float(r2_score(df_full[target_col].values,
+                                      _invert_y_transform(train_preds_t, y_transform, y_params)))
+
             med_dict = {c: (float(medians_full[c]) if not np.isnan(float(medians_full[c])) else 0.0)
                         for c in feat_cols}
             _save_sidecar(med_dict)
@@ -971,7 +1030,8 @@ def _try_lgbm(df_train, df_val, target_col, model_dir, use_grid=False, use_oof=F
                 [{"name": feat_cols[i], "pct": round(float(imps[i] / total * 100), 1)}
                  for i in range(len(feat_cols))],
                 key=lambda x: x["pct"], reverse=True)[:10]
-            info = {"eval_kind": "oof", "used_cols": feat_cols, "medians": med_dict, "exportable": True}
+            info = {"eval_kind": "oof", "used_cols": feat_cols, "medians": med_dict, "exportable": True,
+                    "train_r2": round(train_r2, 4)}
             return round(oof_r2, 4), feat_list, "lgbm", oof_preds, info
 
         # Quick: single split
@@ -999,6 +1059,14 @@ def _try_lgbm(df_train, df_val, target_col, model_dir, use_grid=False, use_oof=F
         preds = _invert_y_transform(preds_t, y_transform, y_params)
         lgbm_r2 = float(r2_score(eval_df[target_col].values, preds))
 
+        # 高-H3緩和: 過学習診断用train_r2(df_train全体に対するR²)
+        if eval_kind == "train":
+            train_r2 = lgbm_r2  # df_val無し: eval_df==df_train のためそのまま流用
+        else:
+            train_preds_t = model.predict(X_tr)
+            train_r2 = float(r2_score(df_train[target_col].values,
+                                      _invert_y_transform(train_preds_t, y_transform, y_params)))
+
         imps = _lgb_importance(model, len(feat_cols))
         total = max(imps.sum(), 1.0)
         feat_list = sorted(
@@ -1011,7 +1079,8 @@ def _try_lgbm(df_train, df_val, target_col, model_dir, use_grid=False, use_oof=F
                     for c in feat_cols}
         _save_sidecar(med_dict)
         print(f"[LightGBM] R²={lgbm_r2:.4f}  trees={model.num_trees()}", flush=True)
-        info = {"eval_kind": eval_kind, "used_cols": feat_cols, "medians": med_dict, "exportable": True}
+        info = {"eval_kind": eval_kind, "used_cols": feat_cols, "medians": med_dict, "exportable": True,
+                "train_r2": round(train_r2, 4)}
         return round(lgbm_r2, 4), feat_list, "lgbm", preds, info
 
     except Exception as e:
@@ -1145,13 +1214,18 @@ def _try_gp(df_train, df_val, target_col, model_dir, use_grid=False, use_oof=Fal
             oof_r2 = float(r2_score(df_full[target_col].values, oof_preds))
             print(f"[GP] OOF R²={oof_r2:.4f}", flush=True)
 
-            gp_final, scaler_final, ls_final, _, med_dict = _fit_one_gp(df_full, None)
+            # 高-H3緩和: train_r2算出のため、最終モデルへの入力にdf_fullを検証データとしても
+            # 渡し(train_preds取得)、過学習診断用の在庫データR²を得る。
+            gp_final, scaler_final, ls_final, train_preds, med_dict = _fit_one_gp(df_full, df_full)
+            train_r2 = (float(r2_score(df_full[target_col].values, train_preds))
+                        if train_preds is not None else None)
             feat_list = _gp_feature_importance(gp_final, ls_final, feat_cols, n_features)
             with open(os.path.join(model_dir, "gp_model.pkl"), "wb") as f:
                 pickle.dump({"model": gp_final, "scaler": scaler_final,
                              "feat_cols": feat_cols, "target_col": target_col,
                              "medians": med_dict}, f)
-            info = {"eval_kind": "oof", "used_cols": feat_cols, "medians": med_dict, "exportable": True}
+            info = {"eval_kind": "oof", "used_cols": feat_cols, "medians": med_dict, "exportable": True,
+                    "train_r2": round(train_r2, 4) if train_r2 is not None else None}
             return round(oof_r2, 4), feat_list, "gp", oof_preds, info
 
         # 非OOF: 単一 train/val
@@ -1164,6 +1238,15 @@ def _try_gp(df_train, df_val, target_col, model_dir, use_grid=False, use_oof=Fal
         preds = _invert_y_transform(preds_t, y_transform, y_params)
         gp_r2 = float(r2_score(eval_df[target_col].values, preds))
 
+        # 高-H3緩和: 過学習診断用train_r2(df_train全体に対するR²)
+        if eval_kind == "train":
+            train_r2 = gp_r2  # df_val無し: eval_df==df_train のためそのまま流用
+        else:
+            X_tr_val = df_train[feat_cols].fillna(medians).values
+            train_preds_t = gp.predict(scaler.transform(X_tr_val))
+            train_r2 = float(r2_score(df_train[target_col].values,
+                                      _invert_y_transform(train_preds_t, y_transform, y_params)))
+
         feat_list = _gp_feature_importance(gp, ls_opt, feat_cols, n_features)
         with open(os.path.join(model_dir, "gp_model.pkl"), "wb") as f:
             pickle.dump({"model": gp, "scaler": scaler,
@@ -1171,7 +1254,8 @@ def _try_gp(df_train, df_val, target_col, model_dir, use_grid=False, use_oof=Fal
                          "medians": med_dict}, f)
 
         print(f"[GP] R²={gp_r2:.4f}", flush=True)
-        info = {"eval_kind": eval_kind, "used_cols": feat_cols, "medians": med_dict, "exportable": True}
+        info = {"eval_kind": eval_kind, "used_cols": feat_cols, "medians": med_dict, "exportable": True,
+                "train_r2": round(train_r2, 4)}
         return round(gp_r2, 4), feat_list, "gp", preds, info
 
     except Exception as e:
@@ -1327,14 +1411,19 @@ def _try_mlp(df_train, df_val, target_col, model_dir, use_grid=False, use_oof=Fa
                     best_param_spec = param_spec
                     best_oof_preds = oof_preds
 
-            pipeline, hidden, _, med_dict = _fit_and_eval(df_full, None, best_param_spec)
+            # 高-H3緩和: train_r2算出のため、最終モデルへの入力にdf_fullを検証データとしても
+            # 渡し(train_preds取得)、過学習診断用の在庫データR²を得る。
+            pipeline, hidden, train_preds, med_dict = _fit_and_eval(df_full, df_full, best_param_spec)
+            train_r2 = (float(r2_score(df_full[target_col].values, train_preds))
+                       if train_preds is not None else None)
             feat_list = _mlp_feature_importance(pipeline, df_full, feat_cols, target_col, y_transform, y_params)
             with open(os.path.join(model_dir, "mlp_model.pkl"), "wb") as f:
                 pickle.dump({"pipeline": pipeline, "feat_cols": feat_cols,
                              "target_col": target_col, "medians": med_dict}, f)
             n_iter = getattr(pipeline['mlp'], 'n_iter_', '?')
             print(f"[MLP] OOF R²={best_param_r2:.4f}  hidden={hidden}  iter={n_iter}", flush=True)
-            info = {"eval_kind": "oof", "used_cols": feat_cols, "medians": med_dict, "exportable": True}
+            info = {"eval_kind": "oof", "used_cols": feat_cols, "medians": med_dict, "exportable": True,
+                    "train_r2": round(train_r2, 4) if train_r2 is not None else None}
             return round(best_param_r2, 4), feat_list, "mlp", best_oof_preds, info
 
         # 非OOF: 単一 train/val
@@ -1361,13 +1450,23 @@ def _try_mlp(df_train, df_val, target_col, model_dir, use_grid=False, use_oof=Fa
         if best_pipeline is None:
             return None, [], None, None, None
 
+        # 高-H3緩和: 過学習診断用train_r2(df_train全体に対するR²)
+        if eval_kind == "train":
+            train_r2 = best_mlp_r2  # df_val無し: eval_df==df_train のためそのまま流用
+        else:
+            X_tr_ev = df_train[feat_cols].fillna(df_train[feat_cols].median()).values
+            train_preds_t = best_pipeline.predict(X_tr_ev)
+            train_r2 = float(r2_score(df_train[target_col].values,
+                                      _invert_y_transform(train_preds_t, y_transform, y_params)))
+
         feat_list = _mlp_feature_importance(best_pipeline, eval_df, feat_cols, target_col, y_transform, y_params)
         with open(os.path.join(model_dir, "mlp_model.pkl"), "wb") as f:
             pickle.dump({"pipeline": best_pipeline, "feat_cols": feat_cols,
                          "target_col": target_col, "medians": best_med}, f)
         n_iter = getattr(best_pipeline['mlp'], 'n_iter_', '?')
         print(f"[MLP] R²={best_mlp_r2:.4f}  hidden={best_hidden}  iter={n_iter}", flush=True)
-        info = {"eval_kind": eval_kind, "used_cols": feat_cols, "medians": best_med, "exportable": True}
+        info = {"eval_kind": eval_kind, "used_cols": feat_cols, "medians": best_med, "exportable": True,
+                "train_r2": round(train_r2, 4)}
         return round(best_mlp_r2, 4), feat_list, "mlp", best_preds, info
 
     except Exception as e:
@@ -1423,8 +1522,15 @@ def _try_sktree(kind, df_train, target_col, model_dir,
         print(f"[{tag}] OOF R²={oof_r2:.4f}", flush=True)
 
         medians_full = df_full[feat_cols].median()
-        final_bst = _lgb_fit(base, df_full[feat_cols].fillna(medians_full).values,
+        X_all = df_full[feat_cols].fillna(medians_full).values
+        final_bst = _lgb_fit(base, X_all,
                              _apply_y_transform(df_full[target_col].values, y_transform, y_params))
+
+        # 高-H3緩和: 過学習診断用train_r2(最終モデル自身の学習データに対するR²)
+        train_preds_t = final_bst.predict(X_all)
+        train_r2 = float(r2_score(df_full[target_col].values,
+                                  _invert_y_transform(train_preds_t, y_transform, y_params)))
+
         med_dict = {c: (float(medians_full[c]) if not np.isnan(float(medians_full[c])) else 0.0)
                     for c in feat_cols}
         # LightGBM テキスト形式で保存（sidecar に feat_cols/medians）
@@ -1441,7 +1547,8 @@ def _try_sktree(kind, df_train, target_col, model_dir,
 
         # LGBM-RF/XT はテキストモデル形式がLightGBMネイティブと同一のため .treg 書き出し可能
         # (_load_export_source が 'lgbm' にエイリアスして _parse_lgbm_to_treg_bytes を再利用)
-        info = {"eval_kind": "oof", "used_cols": feat_cols, "medians": med_dict, "exportable": True}
+        info = {"eval_kind": "oof", "used_cols": feat_cols, "medians": med_dict, "exportable": True,
+                "train_r2": round(train_r2, 4)}
         return round(oof_r2, 4), feat_list, kind, oof_preds, info
 
     except Exception as e:
@@ -2144,7 +2251,16 @@ if __name__ == '__main__':
             blend_r2, blend_names, blend_weights, blend_oof, blend_feats = blend_result
             # Blend も各メンバーを入れ子.tregとして埋め込む _export_treg_blend で書き出し可能
             if np.isfinite(blend_r2):
-                blend_info = {"eval_kind": "oof", "used_cols": [], "medians": {}, "exportable": True}
+                # 高-H3緩和: blendにはメンバー毎の「最終モデル自身の学習データに対するR²」を
+                # 直接計算する手段がない(重み付き線形結合はR²の線形結合と一致しないため厳密値
+                # ではないが)ため、参考値としてメンバーのtrain_r2をblend重みで加重平均する。
+                member_train_r2s = [candidates[n][4].get("train_r2") for n in blend_names
+                                    if candidates[n][4] is not None]
+                blend_train_r2 = (float(np.average(member_train_r2s, weights=blend_weights))
+                                  if len(member_train_r2s) == len(blend_names)
+                                  and all(t is not None for t in member_train_r2s) else None)
+                blend_info = {"eval_kind": "oof", "used_cols": [], "medians": {}, "exportable": True,
+                              "train_r2": round(blend_train_r2, 4) if blend_train_r2 is not None else None}
                 candidates['Blend (Ensemble)'] = (round(blend_r2, 4), blend_feats, 'blend',
                                                   blend_oof, blend_info)
             import pickle as _pkl
@@ -2275,12 +2391,21 @@ if __name__ == '__main__':
         # 「なぜこのモデルが選ばれたか」がユーザーから見えなかった(評価レポート5視点の
         # 提案項目)。r2はcandidates内のOOF/検証スコア(=表示R²と評価データが異なる場合が
         # あるため参考値。厳密な比較はr2_rawとは別軸)。
+        # 高-H3緩和(winner's curse対策): r2_std はfold別R²の標準偏差(値が大きいほど
+        # fold間でスコアが不安定=選択バイアスの影響を受けやすい)。train_r2は最終モデル
+        # 自身の学習データに対するR²(過学習診断用。r2との乖離が大きいほど過学習を疑う)。
+        # いずれも参考値であり、フロント表示は本タスクでは対象外(フィールド追加のみ)。
         "candidate_models": [
             {
                 "name": k,
                 "r2": round(float(v[0]), 4) if np.isfinite(v[0]) else None,
                 "model_type": v[2],
                 "is_best": (k == best_name),
+                "r2_std": round(_candidate_r2_std(
+                    v[3], v[4].get("eval_kind") if v[4] else None,
+                    cv_splits, df[target_column].values), 4),
+                "train_r2": (round(float(v[4].get("train_r2")), 4)
+                            if v[4] and v[4].get("train_r2") is not None else None),
             }
             for k, v in sorted(
                 candidates.items(),
