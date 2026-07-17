@@ -841,54 +841,94 @@
 
             async exportModel({ fileStem }) { return invoke('export_robot', { fileStem }); },
 
-            // ネイティブ版はOSのドラッグ&ドロップ(tauri://drag-*)を使う。座標ベースの
-            // hover判定は既存実装をそのまま流用する。
-            wireDragAndDrop({ trainZone, predictZone, isBusyRef, predictBlockedRef, onDropTrain, onDropPredict, onNonCsvDrop }) {
+            // ネイティブ版はOSのドラッグ&ドロップ(tauri://drag-*)を使う。
+            // Phase9: 実機検証でCSVドロップが全滅する報告が出た。原因は座標系の単一解釈への
+            // 依存(R-1修正でscreenX/screenY減算を外したが、環境によっては論理px/物理px/
+            // スクリーン絶対座標のどれで来るかが実機ごとに異なる)と、Windows wry/WebView2で
+            // 「dropの直前にdrag-leaveが発火してhoverが消える」既知挙動の2点。
+            // 座標系は環境差があるため単一解釈を決め打ちせず、複数の解釈を優先順で試して
+            // 最初にどちらかのゾーンへ当たったものを採用する(resolveZone)。加えて直近の
+            // 有効なゾーン判定を短時間だけ保持し(lastZone)、drop直前のhover消失を補う。
+            wireDragAndDrop({ trainZone, predictZone, isBusyRef, predictBlockedRef, onDropTrain, onDropPredict, onNonCsvDrop, onDropMiss }) {
+                const dpr = window.devicePixelRatio || 1;
+                let lastZone = null; // { zone: 'train'|'predict', at: number } / drop直前drag-leave対策
+
+                // 候補座標解釈を優先順で試し、最初にどちらかのゾーンに当たった解釈を採用する。
+                // 候補1: webview相対・物理px(devicePixelRatioで割って論理pxに変換)
+                // 候補2: webview相対・論理px(wryが環境によって論理pxのまま渡す場合がある)
+                // 候補3: スクリーン絶対・物理px(ウィンドウ位置を引いてwebview相対に変換)
+                function resolveZone(pos) {
+                    const x = pos?.x || 0, y = pos?.y || 0;
+                    if (x === 0 && y === 0) return { zone: null, chosen: null };
+                    const predictBlocked = predictBlockedRef();
+                    const busy = isBusyRef();
+                    const candidates = [
+                        { label: 'physical/dpr', cx: x / dpr, cy: y / dpr },
+                        { label: 'logical', cx: x, cy: y },
+                        { label: 'screen-abs/dpr', cx: x / dpr - window.screenX, cy: y / dpr - window.screenY },
+                    ];
+                    for (const c of candidates) {
+                        const tr = trainZone.getBoundingClientRect();
+                        const pr = predictZone.getBoundingClientRect();
+                        const hitTrain = (c.cx >= tr.left && c.cx <= tr.right && c.cy >= tr.top && c.cy <= tr.bottom) && !busy;
+                        const hitPredict = (c.cx >= pr.left && c.cx <= pr.right && c.cy >= pr.top && c.cy <= pr.bottom) &&
+                                           !predictBlocked && !busy;
+                        if (hitTrain) return { zone: 'train', chosen: c.label };
+                        if (hitPredict) return { zone: 'predict', chosen: c.label };
+                    }
+                    return { zone: null, chosen: null };
+                }
+
                 function dragOverPosition(event) {
                     const pos = (event.payload && (event.payload.position || event.payload)) || {};
-                    const x = pos.x || 0, y = pos.y || 0;
-                    if (x === 0 && y === 0) return;
-                    // 低-9/R-1: 以前は論理座標(ウィンドウ左上基準)と物理CSS px座標を両方試すOR判定
-                    // だったが、どちらの座標系が正しいか理解しないまま両方当ててごまかす設計で
-                    // 誤ヒット/取りこぼしの温床だった。Tauri v2のdrag-over position(pos.x/y)は
-                    // wryがwebview相対・物理pxで渡すため、devicePixelRatioで割るだけで
-                    // getBoundingClientRect()と同じ論理座標系(ウィンドウ内相対)になる。
-                    // window.screenX/screenY(ウィンドウの画面上位置)を引くのは誤りで、
-                    // 非最大化ウィンドウを画面原点以外に置くと二重減算でhoverが一切付かなくなる。
-                    const dpr = window.devicePixelRatio || 1;
-                    const lx = x / dpr, ly = y / dpr;
-                    const tr = trainZone.getBoundingClientRect();
-                    const pr = predictZone.getBoundingClientRect();
-                    const predictBlocked = predictBlockedRef();
-                    const hitTrain = (lx >= tr.left && lx <= tr.right && ly >= tr.top && ly <= tr.bottom) && !isBusyRef();
-                    const hitPredict = (lx >= pr.left && lx <= pr.right && ly >= pr.top && ly <= pr.bottom) &&
-                                       !predictBlocked && !isBusyRef();
-                    trainZone.classList.toggle('hover', hitTrain);
-                    predictZone.classList.toggle('hover', hitPredict);
+                    const { zone, chosen } = resolveZone(pos);
+                    console.debug('[dnd]', { raw: pos, dpr, chosen, zone });
+                    trainZone.classList.toggle('hover', zone === 'train');
+                    predictZone.classList.toggle('hover', zone === 'predict');
+                    lastZone = { zone, at: Date.now() };
                 }
                 listen('tauri://drag-over', dragOverPosition);
                 listen('tauri://drag-leave', () => {
+                    // lastZoneはここで消さない(中-5/Phase9: WebView2はdropの直前にdrag-leaveを
+                    // 発火させることがあり、ここでlastZoneまで消すとdrop側の救済策が効かなくなる)。
                     trainZone.classList.remove('hover');
                     predictZone.classList.remove('hover');
                 });
                 listen('tauri://drag-drop', async (event) => {
-                    const overTrain = trainZone.classList.contains('hover');
-                    const overPredict = predictZone.classList.contains('hover') &&
-                                      !predictZone.classList.contains('drop-zone-disabled') &&
-                                      !predictZone.classList.contains('drop-predict-blocked');
+                    if (isBusyRef()) {
+                        trainZone.classList.remove('hover');
+                        predictZone.classList.remove('hover');
+                        return;
+                    }
+                    const pos = (event.payload && (event.payload.position || event.payload)) || {};
+                    // 受理判定の優先順(Phase9): (1)dropイベント自身の座標→(2)hoverクラス(現行)
+                    // →(3)500ms以内のlastZone(leave-before-drop対策)。全てnullなら無視する。
+                    let { zone, chosen } = resolveZone(pos);
+                    let source = zone ? 'drop-position' : null;
+                    if (!zone) {
+                        const overTrain = trainZone.classList.contains('hover');
+                        const overPredict = predictZone.classList.contains('hover') &&
+                                          !predictZone.classList.contains('drop-zone-disabled') &&
+                                          !predictZone.classList.contains('drop-predict-blocked');
+                        if (overTrain) { zone = 'train'; source = 'hover-class'; }
+                        else if (overPredict) { zone = 'predict'; source = 'hover-class'; }
+                    }
+                    if (!zone && lastZone?.zone && (Date.now() - lastZone.at) <= 500) {
+                        zone = lastZone.zone;
+                        source = 'last-zone';
+                    }
                     trainZone.classList.remove('hover');
                     predictZone.classList.remove('hover');
-                    if (isBusyRef()) return;
-                    // 中-5: 直前のdrag-overで記録したhoverクラスがどちらのゾーンにも
-                    // 付いていない(例: DEPLOYボタンの上へドロップした)場合は、学習扱いに
-                    // 落とさずそのまま無視する。以前はここがelseで無条件にonDropTrainへ
-                    // フォールバックしており、無関係なドロップで学習が始まり状態が壊れていた。
-                    if (!overTrain && !overPredict) return;
+                    console.debug('[dnd]', { raw: pos, dpr, chosen, zone, source });
+                    // 中-5: どの解釈でもゾーンに当たらない(例: DEPLOYボタンの上へドロップした)
+                    // 場合は、学習扱いに落とさずそのまま無視する。ただし無言無視はユーザーが
+                    // 故障と区別できないため、短いフィードバックを出す(Phase9)。
+                    if (!zone) { onDropMiss?.(); return; }
                     const paths = Array.isArray(event.payload) ? event.payload : (event.payload?.paths || []);
                     const path = paths[0];
                     if (!path) return;
                     if (!path.toLowerCase().endsWith('.csv')) { onNonCsvDrop?.(); return; }
-                    if (overPredict) onDropPredict(path); else await onDropTrain(path);
+                    if (zone === 'predict') onDropPredict(path); else await onDropTrain(path);
                 });
             },
 
@@ -1932,6 +1972,9 @@
         },
         // 低-12: CSV以外のファイルがドロップされた時のフィードバック(Tauri/Web共通)。
         onNonCsvDrop: () => { setBubble('CSVファイルだけ読めるよ。', false); },
+        // Phase9: どちらのゾーンにも当たらなかったドロップを無言で無視すると、
+        // ユーザーが「ツールが壊れている」と区別できないため一言フィードバックする(Tauri専用)。
+        onDropMiss: () => { setBubble('枠の上に落としてね。', false); },
     });
 
     async function handleTrainDrop(fileRef) {
