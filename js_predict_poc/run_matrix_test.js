@@ -34,16 +34,20 @@ function toNum(s) {
     return Number.isFinite(v) ? v : NaN;
 }
 
+// 精度レバー4/.treg v5: カテゴリエンコーダ(one-hot/target encoding)は元のCSV文字列
+// (rawRow)同士でマッチングするため、数値化済みのrowだけでなく生の文字列行も返す。
 function parseCsv(text) {
     const lines = text.trim().split(/\r?\n/);
     const headers = lines[0].split(",");
     return lines.slice(1).map((line) => {
         const vals = line.split(",");
         const row = {};
+        const rawRow = {};
         headers.forEach((h, i) => {
             row[h] = toNum(vals[i]);
+            rawRow[h] = vals[i];
         });
-        return row;
+        return { row, rawRow };
     });
 }
 
@@ -89,7 +93,7 @@ for (const name of manifest) {
     let worstRow = -1;
     let rowFailCount = 0;
     for (let i = 0; i < rows.length; i++) {
-        const jsP = predictRow(model, rows[i]);
+        const jsP = predictRow(model, rows[i].row, rows[i].rawRow);
         const cppP = cppPreds[i];
         const jsIsNaN = Number.isNaN(jsP) || !Number.isFinite(jsP);
         const cppIsNaN = Number.isNaN(cppP) || !Number.isFinite(cppP);
@@ -169,7 +173,7 @@ if (fs.existsSync(PY_MANIFEST_PATH)) {
         let worstRow = -1;
         let rowFailCount = 0;
         for (let i = 0; i < rows.length; i++) {
-            const jsP = predictRow(model, rows[i]);
+            const jsP = predictRow(model, rows[i].row, rows[i].rawRow);
             const pyP = pyPreds[i];
             const jsIsNaN = Number.isNaN(jsP) || !Number.isFinite(jsP);
             const pyIsNaN = Number.isNaN(pyP) || !Number.isFinite(pyP);

@@ -44,5 +44,8 @@
   "linear_poly_derived_none_roundTrue",
   "blend_all_types_mixed_none_roundFalse",
   "blend_log1p_smear_round",
-  "blend_lgbm_linear_log1p_roundFalse"
+  "blend_lgbm_linear_log1p_roundFalse",
+  "linear_onehot_cat_none_roundFalse",
+  "lgbm_target_enc_cat_none_roundFalse",
+  "blend_cat_mixed_none_roundFalse"
 ]
