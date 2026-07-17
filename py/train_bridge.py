@@ -95,6 +95,13 @@ def _lgbm_search_candidates(n_rows, rng_seed=42):
             subsample=float(np.round(rng.uniform(0.6, 1.0), 2)),
             reg_alpha=float(np.round(10 ** rng.uniform(-3, 0.5), 4)),
             reg_lambda=float(np.round(10 ** rng.uniform(-2, 1.5), 4)),
+            # 小粒レバー6-1: max_bin(ヒストグラムのビン数)・extra_trees(分割候補の
+            # ランダム化。leaf_valueは通常のGBDTと同じ定数のまま=.treg互換)を追加。
+            # linear_tree は葉がleaf_value定数でなく線形モデルになり、現行.treg
+            # フォーマット(定数leaf_valueのみ)では表現できずエクスポートが壊れる
+            # ため意図的に追加しない(採否は見送り、フォーマット変更が必要)。
+            max_bin=int(rng.choice([63, 127, 255, 511])),
+            extra_trees=bool(rng.choice([False, True])),
         ))
     return cands
 
