@@ -718,19 +718,28 @@ def _prepare_categoricals(df, target_col):
     df = df.copy()
     # 低-互換性: pandas 3.x はデフォルトで文字列列を object でなく専用の str dtype に
     # する(pandas 2.x/embed版は object のまま)。dtype名の決め打ち比較ではバージョンに
-    # よって取りこぼすため、「数値dtypeでない」ことを条件にする(is_numeric_dtypeは
-    # bool/objectを含め非数値を一貫して除外する)。
+    # よって取りこぼすため、「数値dtypeでない」ことを条件にする。
+    # 中-8ef9191フォロー: is_numeric_dtype は bool 列に True を返す(pandas実測)ため、
+    # 単純な否定条件では bool 列がここを素通りしてしまう。bool/nullable-boolean は
+    # 明示的にカテゴリ扱いに含める。
     cat_cols = [c for c in df.columns
-                if c != target_col and not pd.api.types.is_numeric_dtype(df[c])]
+                if c != target_col and (pd.api.types.is_bool_dtype(df[c])
+                                         or not pd.api.types.is_numeric_dtype(df[c]))]
     onehot_specs, target_cols, dropped_cols = [], [], []
     n_rows = len(df)
     for col in cat_cols:
-        coerced = pd.to_numeric(df[col], errors='coerce')
-        frac_numeric = float(coerced.notna().mean()) if n_rows > 0 else 0.0
-        if frac_numeric >= CAT_NUMERIC_COERCE_MIN:
-            df[col] = coerced
-            print(f"[CatEnc] {col}: {frac_numeric*100:.0f}%が数値化可能 → 数値列として扱う", flush=True)
-            continue
+        # bool列は pd.to_numeric で 100% 数値化できてしまう(True/False→1/0)ため、
+        # 下の数値コアース分岐に通すと数値列に戻ってしまう。配布後の予測入力CSVでは
+        # bool列は "True"/"False" という文字列として現れる(native/JSはfloatパース
+        # できずNaN→定数化するバグの原因だった)ため、bool列は常にカテゴリ
+        # (one-hot、class_value="True"/"False")として扱い、数値コアースをスキップする。
+        if not pd.api.types.is_bool_dtype(df[col]):
+            coerced = pd.to_numeric(df[col], errors='coerce')
+            frac_numeric = float(coerced.notna().mean()) if n_rows > 0 else 0.0
+            if frac_numeric >= CAT_NUMERIC_COERCE_MIN:
+                df[col] = coerced
+                print(f"[CatEnc] {col}: {frac_numeric*100:.0f}%が数値化可能 → 数値列として扱う", flush=True)
+                continue
         s_filled = df[col].fillna(CAT_NAN_SENTINEL).astype(str)
         classes = sorted(s_filled.unique().tolist())
         card = len(classes)
