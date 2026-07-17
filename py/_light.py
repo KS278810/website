@@ -79,7 +79,14 @@ class StandardScaler:
         X = np.asarray(X, float)
         self.mean_ = X.mean(axis=0)
         s = X.std(axis=0)
-        self.scale_ = np.where(s < 1e-12, 1.0, s)
+        # 中-556e8ecフォロー: train_bridge.py の .treg 書き出し側(_baked_scale)は
+        # scale=max(scale,1e-8)を焼き込むが、ここ(アプリ内Python予測が使う実体)は
+        # 以前 np.where(s<1e-12,1.0,s) で「ほぼゼロならscale=1.0」だけを特別扱いし、
+        # 1e-12超1e-8未満の準定数列はs自身をそのまま使っていたため、書き出し済み.tregの
+        # 予測とアプリ内予測がこの区間で大きく乖離していた。.treg側と全く同じ
+        # max(scale,1e-8)クランプに統一する(真の定数列はx-mean=0なので除数を
+        # 1.0→1e-8に変えても結果は変わらず、この統一で悪化するケースは無い)。
+        self.scale_ = np.maximum(s, 1e-8)
         return self
 
     def transform(self, X):
@@ -97,7 +104,9 @@ class RobustScaler:
         q1 = np.percentile(X, 25, axis=0)
         q3 = np.percentile(X, 75, axis=0)
         iqr = q3 - q1
-        self.scale_ = np.where(iqr < 1e-12, 1.0, iqr)
+        # 中-556e8ecフォロー: StandardScalerと同じ理由でmax(scale,1e-8)に統一(詳細は
+        # StandardScaler.fit のコメント参照)。
+        self.scale_ = np.maximum(iqr, 1e-8)
         return self
 
     def transform(self, X):
