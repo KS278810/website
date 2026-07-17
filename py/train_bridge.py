@@ -544,6 +544,82 @@ def _detect_y_transform(y: np.ndarray, y_full: np.ndarray = None):
     return 'none', {}
 
 
+Y_TRANSFORM_CV_FOLDS = 2   # じっくりモードのY変換CV選択に使うfold数(LGBM_HALVING_FOLDSと同数)
+
+
+def _select_y_transform_cv(df, target_col, cv_splits, num_jobs=4):
+    """精度レバー3: skewヒューリスティックの代わりに、none/log1p/yeo_johnsonの3通りを
+    軽量LGBM(先頭Y_TRANSFORM_CV_FOLDS=2fold)で比較し、外部スケールでのOOF R²が
+    最良のものを採用する(じっくりモード専用。お急ぎモードは_detect_y_transformの
+    skewヒューリスティックを維持)。yeo_johnsonのlambdaはfold0-trainでfitする
+    (既存の_detect_y_transformと同じリーク防止方針)。
+    候補が1つしかない・全候補が失敗した場合は('none', {})にフォールバックする。"""
+    y_all = df[target_col].values
+    tr_idx0 = cv_splits[0][0]
+    candidates = [('none', {})]
+    if float(np.min(y_all)) >= 0:
+        candidates.append(('log1p', {}))
+    try:
+        from _light import PowerTransformer
+        pt = PowerTransformer(method='yeo-johnson', standardize=False)
+        pt.fit(y_all[tr_idx0].astype(float).reshape(-1, 1))
+        lam = float(pt.lambdas_[0])
+        candidates.append(('yeo_johnson', {'lambda': lam}))
+    except Exception as e:
+        print(f"[YTransform-CV] Yeo-Johnson fit失敗 → 候補から除外: {e}", flush=True)
+
+    if len(candidates) == 1:
+        return candidates[0]
+
+    feat_cols = _get_feat_cols(df, target_col)
+    if not feat_cols:
+        return candidates[0]
+
+    n_probe_folds = min(Y_TRANSFORM_CV_FOLDS, len(cv_splits))
+    best = None
+    for transform, params in candidates:
+        oof = np.full(len(df), np.nan)
+        ok = True
+        for tr_idx, va_idx in cv_splits[:n_probe_folds]:
+            dtr, dva = df.iloc[tr_idx], df.iloc[va_idx]
+            med = dtr[feat_cols].median()
+            X_tr = dtr[feat_cols].fillna(med).values
+            X_va = dva[feat_cols].fillna(med).values
+            try:
+                y_tr = _apply_y_transform(dtr[target_col].values, transform, params)
+                if not np.all(np.isfinite(y_tr)):
+                    raise ValueError("y_tr contains non-finite values")
+                bst = _lgb_fit(dict(n_estimators=200, num_leaves=31, learning_rate=0.1,
+                                    verbosity=-1, n_jobs=num_jobs, force_col_wise=True,
+                                    deterministic=True, seed=42,
+                                    min_child_samples=max(3, len(dtr) // 30)), X_tr, y_tr)
+                oof[va_idx] = _invert_y_transform(bst.predict(X_va), transform, params)
+            except Exception as e:
+                print(f"[YTransform-CV] {transform}: 予選失敗 → 候補から除外 ({e})", flush=True)
+                ok = False
+                break
+        if not ok:
+            continue
+        mask = np.isfinite(oof)
+        if mask.sum() < 2:
+            continue
+        try:
+            r2 = float(r2_score(y_all[mask], oof[mask]))
+        except Exception:
+            continue
+        if not np.isfinite(r2):
+            continue
+        print(f"[YTransform-CV] {transform}: 予選R²={r2:.4f}", flush=True)
+        if best is None or r2 > best[0]:
+            best = (r2, transform, params)
+
+    if best is None:
+        print("[YTransform-CV] 全候補が失敗 → 変換なしにフォールバック", flush=True)
+        return 'none', {}
+    print(f"[YTransform-CV] 採用: {best[1]} (予選R²={best[0]:.4f})", flush=True)
+    return best[1], best[2]
+
+
 def _apply_y_transform(y: np.ndarray, transform: str, params: dict):
     if transform == 'log1p':
         return np.log1p(y)
@@ -2228,12 +2304,19 @@ if __name__ == '__main__':
         lo, hi = _fit_y_winsorize_bounds(df[target_column].values[tr_idx0], iqr_mult)
         df, n_outliers = _apply_y_winsorize(df, target_column, lo, hi)
 
-    # Y 変換（学習側のみで検出・fit → リーク防止）
+    # Y 変換（学習側のみで検出・fit → リーク防止）。
+    # 精度レバー3: じっくりモードはskewヒューリスティックでなくLGBM 2-fold予選のCV選択
+    # (_select_y_transform_cv)を使う。お急ぎモードは従来のskewヒューリスティックのまま
+    # (探索コストを避けるため現状維持、タスク指示どおり)。
     y_transform = 'none'
     y_params    = {}
     try:
-        y_transform, y_params = _detect_y_transform(df[target_column].values[tr_idx0],
-                                                     df[target_column].values)
+        if thorough and have_split and cv_splits is not None:
+            y_transform, y_params = _select_y_transform_cv(df, target_column, cv_splits,
+                                                            num_jobs=num_jobs)
+        else:
+            y_transform, y_params = _detect_y_transform(df[target_column].values[tr_idx0],
+                                                         df[target_column].values)
     except Exception as e:
         print(f"[YTransform] 検出失敗 → 変換スキップ: {e}", flush=True)
 
