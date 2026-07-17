@@ -621,11 +621,27 @@ def _make_binned_splits(df: pd.DataFrame, target_col: str, n_splits: int = 5, se
     return list(kf.split(np.zeros(n)))
 
 
+def _fold_frame(df_full, df_all_per_fold, fold_idx, tr_idx, target_col, base_feat_cols,
+                screen_cols_per_fold=None):
+    """高-H1: OOF fold毎に「そのfoldの検証行を一切見ずに」fitしたFE/スクリーニング済み
+    データと特徴列を返す。df_all_per_fold が None の場合は従来通り共有 df_full/base_feat_cols
+    を使う(FE/screeningがそもそも無効な経路、または非OOF経路との後方互換)。
+    screen_cols_per_fold が与えられる場合(GP/MLP)は特徴列をそのfold専用のスクリーニング結果に
+    差し替える。それ以外(Linear/LGBM/RF/XT)は df_fold から都度 _get_feat_cols で再計算する
+    (fold毎にFE由来の派生列セットが異なり得るため)。"""
+    if df_all_per_fold is None:
+        return df_full, base_feat_cols
+    df_fold = df_all_per_fold[fold_idx]
+    if screen_cols_per_fold is not None:
+        return df_fold, screen_cols_per_fold[fold_idx]
+    return df_fold, _get_feat_cols(df_fold.iloc[tr_idx], target_col)
+
+
 # ─── 1. Linear (Ridge CV + Polynomial for small data) ─────────────────────────
 # Returns: (r2, feat_list, 'linear', preds, info)
 
 def _try_linear(df_train, df_val, target_col, model_dir, y_transform='none', y_params={},
-                df_all=None, use_oof=False, splits=None):
+                df_all=None, use_oof=False, splits=None, df_all_per_fold=None):
     try:
         import pickle
         from _light import RidgeCV, RobustScaler, PolynomialFeatures
@@ -648,12 +664,14 @@ def _try_linear(df_train, df_val, target_col, model_dir, y_transform='none', y_p
             medians_full = df_full[feat_cols].median()
             print(f"[Linear] K-Fold OOF ({n_splits} fold)...", flush=True)
             for fold, (tr_idx, va_idx) in enumerate(splits):
-                dtr = df_full.iloc[tr_idx]
-                dva = df_full.iloc[va_idx]
-                med_f = dtr[feat_cols].median()
-                X_f  = dtr[feat_cols].fillna(med_f).values
+                # 高-H1: fold毎に(そのfoldの検証行を見ずに)fitしたFE済みデータ・特徴列を使う
+                df_fold, feat_cols_f = _fold_frame(df_full, df_all_per_fold, fold, tr_idx, target_col, feat_cols)
+                dtr = df_fold.iloc[tr_idx]
+                dva = df_fold.iloc[va_idx]
+                med_f = dtr[feat_cols_f].median()
+                X_f  = dtr[feat_cols_f].fillna(med_f).values
                 y_f  = _apply_y_transform(dtr[target_col].values, y_transform, y_params)
-                X_v  = dva[feat_cols].fillna(med_f).values
+                X_v  = dva[feat_cols_f].fillna(med_f).values
                 sc = RobustScaler()
                 m  = RidgeCV(alphas=alphas_std)
                 m.fit(sc.fit_transform(X_f), y_f)
@@ -687,6 +705,11 @@ def _try_linear(df_train, df_val, target_col, model_dir, y_transform='none', y_p
             return round(oof_r2, 4), feat_list, "linear", oof_preds, info
 
         # ── K-Fold OOF (poly): top_feats は df_full 全体で1回固定 ────────────
+        #    既知の限界(高-H1の対象外・タスク指示の対象は_build_derived_recipeと
+        #    _lgbm_feature_screenのみ): poly-Ridgeの top_feats 選定(分散/相関ベース)は
+        #    ここでは fold-local 化していない。FE有効時は特徴数が POLY_MAX_FEATS(8) を
+        #    超えて非poly分岐に流れることが大半のため実害は小さいが、raw特徴が極端に
+        #    少ないデータでは fold0-train 由来の選定バイアスが残る可能性がある。
         if do_kfold and use_poly:
             df_full = df_all
             n_splits = len(splits)
@@ -824,7 +847,8 @@ def _try_linear(df_train, df_val, target_col, model_dir, y_transform='none', y_p
 # Returns: (r2, feat_list, 'lgbm', preds, info)
 
 def _try_lgbm(df_train, df_val, target_col, model_dir, use_grid=False, use_oof=False,
-              y_transform='none', y_params={}, df_all=None, num_jobs=4, splits=None, prog=None):
+              y_transform='none', y_params={}, df_all=None, num_jobs=4, splits=None, prog=None,
+              df_all_per_fold=None):
     try:
         import lightgbm as lgb
 
@@ -866,17 +890,20 @@ def _try_lgbm(df_train, df_val, target_col, model_dir, use_grid=False, use_oof=F
                 best_iters_local = []
                 for fold_idx in fold_idxs:
                     tr_idx, va_idx = splits[fold_idx]
-                    dtr = df_full.iloc[tr_idx]
-                    dva = df_full.iloc[va_idx]
-                    med_f = dtr[feat_cols].median()
+                    # 高-H1: fold毎に(そのfoldの検証行を見ずに)fitしたFE済みデータ・特徴列を使う
+                    df_fold, feat_cols_f = _fold_frame(df_full, df_all_per_fold, fold_idx, tr_idx,
+                                                       target_col, feat_cols)
+                    dtr = df_fold.iloc[tr_idx]
+                    dva = df_fold.iloc[va_idx]
+                    med_f = dtr[feat_cols_f].median()
                     # 高-H2: early stoppingは評価fold(dva)自身ではなくfold-train内の
                     # 専用holdout(90/10)で行う。dvaはOOF評価にのみ使い、ESには触れさせない。
                     dtr_fit, dtr_es = _split_es_holdout(dtr, seed_offset=fold_idx)
-                    X_f = dtr_fit[feat_cols].fillna(med_f).values
+                    X_f = dtr_fit[feat_cols_f].fillna(med_f).values
                     y_f = _apply_y_transform(dtr_fit[target_col].values, y_transform, y_params)
-                    X_v = dva[feat_cols].fillna(med_f).values
+                    X_v = dva[feat_cols_f].fillna(med_f).values
                     if dtr_es is not None:
-                        X_es = dtr_es[feat_cols].fillna(med_f).values
+                        X_es = dtr_es[feat_cols_f].fillna(med_f).values
                         y_es_t = _apply_y_transform(dtr_es[target_col].values, y_transform, y_params)
                         bst = _lgb_fit(params, X_f, y_f, X_es, y_es_t, early_stopping=50)
                     else:
@@ -1033,7 +1060,8 @@ def _gp_feature_importance(gp, ls_opt, feat_cols, n_features):
 
 
 def _try_gp(df_train, df_val, target_col, model_dir, use_grid=False, use_oof=False,
-            y_transform='none', y_params={}, df_all=None, feat_cols_override=None, splits=None):
+            y_transform='none', y_params={}, df_all=None, feat_cols_override=None, splits=None,
+            df_all_per_fold=None, screen_cols_per_fold=None):
     try:
         import pickle
         from _light import StandardScaler, LightGP
@@ -1045,9 +1073,11 @@ def _try_gp(df_train, df_val, target_col, model_dir, use_grid=False, use_oof=Fal
         n_features = len(feat_cols)
         n_restarts_opt = GP_RESTARTS_THOROUGH if use_grid else GP_RESTARTS_QUICK
 
-        def _fit_one_gp(dtr, dva_or_none):
-            medians_l = dtr[feat_cols].median()
-            X_full = dtr[feat_cols].fillna(medians_l).values
+        def _fit_one_gp(dtr, dva_or_none, feat_cols_local=None):
+            fc = feat_cols_local if feat_cols_local is not None else feat_cols
+            d_local = len(fc)
+            medians_l = dtr[fc].median()
+            X_full = dtr[fc].fillna(medians_l).values
             y_full_raw = dtr[target_col].values
             n_full = len(X_full)
             if n_full > GP_MAX_TRAIN:
@@ -1065,13 +1095,13 @@ def _try_gp(df_train, df_val, target_col, model_dir, use_grid=False, use_oof=Fal
                 best_nll = float('inf')
                 best_params = None
                 for ridx in range(n_restarts_opt):
-                    x0 = np.zeros(n_features + 2)
+                    x0 = np.zeros(d_local + 2)
                     if ridx > 0:
-                        x0[:n_features] = np.random.randn(n_features) * 0.5
-                    x0[n_features + 1] = -3.0
+                        x0[:d_local] = np.random.randn(d_local) * 0.5
+                    x0[d_local + 1] = -3.0
                     try:
                         lo_, sv_, nv_, nll_ = _scipy_optimize_gp_hyperparams(
-                            X_tr_s, y_tr, n_features, x0=x0)
+                            X_tr_s, y_tr, d_local, x0=x0)
                         if nll_ < best_nll:
                             best_nll = nll_
                             best_params = (lo_, sv_, nv_)
@@ -1084,16 +1114,16 @@ def _try_gp(df_train, df_val, target_col, model_dir, use_grid=False, use_oof=Fal
                 gp = LightGP(length_scale=ls_opt, sigma_var=sv_opt, noise_var=nv_opt)
             else:
                 # 最適化を回さない小データ等: デフォルトハイパラ（ls=1, sv=1, nv=1e-2）
-                gp = LightGP(length_scale=np.ones(n_features), sigma_var=1.0, noise_var=1e-2)
+                gp = LightGP(length_scale=np.ones(d_local), sigma_var=1.0, noise_var=1e-2)
             gp.fit(X_tr_s, y_tr)
 
             preds_local = None
             if dva_or_none is not None:
-                X_v = dva_or_none[feat_cols].fillna(medians_l).values
+                X_v = dva_or_none[fc].fillna(medians_l).values
                 preds_t = gp.predict(scaler.transform(X_v))
                 preds_local = _invert_y_transform(preds_t, y_transform, y_params)
             med_dict = {c: (float(medians_l[c]) if not np.isnan(float(medians_l[c])) else 0.0)
-                        for c in feat_cols}
+                        for c in fc}
             return gp, scaler, ls_opt, preds_local, med_dict
 
         if use_oof and df_all is not None and splits is not None:
@@ -1101,9 +1131,13 @@ def _try_gp(df_train, df_val, target_col, model_dir, use_grid=False, use_oof=Fal
             n_splits = len(splits)
             oof_preds = np.zeros(len(df_full))
             for fold, (tr_idx, va_idx) in enumerate(splits):
-                dtr = df_full.iloc[tr_idx]
-                dva = df_full.iloc[va_idx]
-                _, _, _, preds_local, _ = _fit_one_gp(dtr, dva)
+                # 高-H1: fold毎に(そのfoldの検証行を見ずに)fitしたFE済みデータ・
+                # スクリーニング済み特徴列を使う
+                df_fold, feat_cols_f = _fold_frame(df_full, df_all_per_fold, fold, tr_idx,
+                                                   target_col, feat_cols, screen_cols_per_fold)
+                dtr = df_fold.iloc[tr_idx]
+                dva = df_fold.iloc[va_idx]
+                _, _, _, preds_local, _ = _fit_one_gp(dtr, dva, feat_cols_local=feat_cols_f)
                 oof_preds[va_idx] = preds_local
                 if use_grid:
                     fold_r2 = r2_score(dva[target_col].values, preds_local)
@@ -1185,7 +1219,8 @@ def _mlp_feature_importance(pipeline, eval_df, feat_cols, target_col, y_transfor
 
 
 def _try_mlp(df_train, df_val, target_col, model_dir, use_grid=False, use_oof=False,
-             y_transform='none', y_params={}, df_all=None, feat_cols_override=None, splits=None):
+             y_transform='none', y_params={}, df_all=None, feat_cols_override=None, splits=None,
+             df_all_per_fold=None, screen_cols_per_fold=None):
     try:
         import pickle
         from _light import StandardScaler, LightMLP, LightPipeline
@@ -1219,19 +1254,20 @@ def _try_mlp(df_train, df_val, target_col, model_dir, use_grid=False, use_oof=Fa
             pipeline = LightPipeline([('scaler', StandardScaler()), ('mlp', mlp)])
             return pipeline, hidden
 
-        def _fit_and_eval(dtr, dva_or_none, param_spec):
-            medians_l = dtr[feat_cols].median()
-            X_tr = dtr[feat_cols].fillna(medians_l).values
+        def _fit_and_eval(dtr, dva_or_none, param_spec, feat_cols_local=None):
+            fc = feat_cols_local if feat_cols_local is not None else feat_cols
+            medians_l = dtr[fc].median()
+            X_tr = dtr[fc].fillna(medians_l).values
             y_tr = _apply_y_transform(dtr[target_col].values, y_transform, y_params)
             pipeline, hidden = _build_pipeline(param_spec, len(dtr))
             pipeline.fit(X_tr, y_tr)
             preds = None
             if dva_or_none is not None:
-                X_v = dva_or_none[feat_cols].fillna(medians_l).values
+                X_v = dva_or_none[fc].fillna(medians_l).values
                 preds_t = pipeline.predict(X_v)
                 preds = _invert_y_transform(preds_t, y_transform, y_params)
             med_dict = {c: (float(medians_l[c]) if not np.isnan(float(medians_l[c])) else 0.0)
-                        for c in feat_cols}
+                        for c in fc}
             return pipeline, hidden, preds, med_dict
 
         if use_oof and df_all is not None and splits is not None:
@@ -1247,10 +1283,14 @@ def _try_mlp(df_train, df_val, target_col, model_dir, use_grid=False, use_oof=Fa
                     preds_p = np.zeros(len(df_full))
                     touched = np.zeros(len(df_full), dtype=bool)
                     try:
-                        for tr_idx, va_idx in splits[:MLP_HALVING_FOLDS]:
-                            dtr = df_full.iloc[tr_idx]
-                            dva = df_full.iloc[va_idx]
-                            _, _, preds_local, _ = _fit_and_eval(dtr, dva, param_spec)
+                        for h_fold, (tr_idx, va_idx) in enumerate(splits[:MLP_HALVING_FOLDS]):
+                            # 高-H1: fold毎に(そのfoldの検証行を見ずに)fitしたFE済みデータ・
+                            # スクリーニング済み特徴列を使う
+                            df_fold, feat_cols_f = _fold_frame(df_full, df_all_per_fold, h_fold, tr_idx,
+                                                               target_col, feat_cols, screen_cols_per_fold)
+                            dtr = df_fold.iloc[tr_idx]
+                            dva = df_fold.iloc[va_idx]
+                            _, _, preds_local, _ = _fit_and_eval(dtr, dva, param_spec, feat_cols_local=feat_cols_f)
                             preds_p[va_idx] = preds_local
                             touched[va_idx] = True
                         r2_p = float(r2_score(df_full[target_col].values[touched], preds_p[touched]))
@@ -1271,9 +1311,13 @@ def _try_mlp(df_train, df_val, target_col, model_dir, use_grid=False, use_oof=Fa
                           f"single_layer={param_spec.get('single_layer', False)}", flush=True)
                 oof_preds = np.zeros(len(df_full))
                 for fold, (tr_idx, va_idx) in enumerate(splits):
-                    dtr = df_full.iloc[tr_idx]
-                    dva = df_full.iloc[va_idx]
-                    _, _, preds_local, _ = _fit_and_eval(dtr, dva, param_spec)
+                    # 高-H1: fold毎に(そのfoldの検証行を見ずに)fitしたFE済みデータ・
+                    # スクリーニング済み特徴列を使う
+                    df_fold, feat_cols_f = _fold_frame(df_full, df_all_per_fold, fold, tr_idx,
+                                                       target_col, feat_cols, screen_cols_per_fold)
+                    dtr = df_fold.iloc[tr_idx]
+                    dva = df_fold.iloc[va_idx]
+                    _, _, preds_local, _ = _fit_and_eval(dtr, dva, param_spec, feat_cols_local=feat_cols_f)
                     oof_preds[va_idx] = preds_local
                 oof_r2 = float(r2_score(df_full[target_col].values, oof_preds))
                 if use_grid:
@@ -1348,7 +1392,8 @@ _LGBM_BAG_TAG = {'rf': 'LGBM-RF', 'xt': 'LGBM-XT'}
 
 
 def _try_sktree(kind, df_train, target_col, model_dir,
-                y_transform='none', y_params={}, df_all=None, splits=None, num_jobs=4):
+                y_transform='none', y_params={}, df_all=None, splits=None, num_jobs=4,
+                df_all_per_fold=None):
     try:
         import pickle  # noqa: F401 (後方互換のため保持)
         tag = _LGBM_BAG_TAG.get(kind, kind)
@@ -1363,13 +1408,16 @@ def _try_sktree(kind, df_train, target_col, model_dir,
 
         df_full = df_all
         oof_preds = np.zeros(len(df_full))
-        for tr_idx, va_idx in splits:
-            dtr = df_full.iloc[tr_idx]
-            dva = df_full.iloc[va_idx]
-            med_f = dtr[feat_cols].median()
-            bst = _lgb_fit(base, dtr[feat_cols].fillna(med_f).values,
+        for fold_idx, (tr_idx, va_idx) in enumerate(splits):
+            # 高-H1: fold毎に(そのfoldの検証行を見ずに)fitしたFE済みデータ・特徴列を使う
+            df_fold, feat_cols_f = _fold_frame(df_full, df_all_per_fold, fold_idx, tr_idx,
+                                               target_col, feat_cols)
+            dtr = df_fold.iloc[tr_idx]
+            dva = df_fold.iloc[va_idx]
+            med_f = dtr[feat_cols_f].median()
+            bst = _lgb_fit(base, dtr[feat_cols_f].fillna(med_f).values,
                            _apply_y_transform(dtr[target_col].values, y_transform, y_params))
-            preds_t = bst.predict(dva[feat_cols].fillna(med_f).values)
+            preds_t = bst.predict(dva[feat_cols_f].fillna(med_f).values)
             oof_preds[va_idx] = _invert_y_transform(preds_t, y_transform, y_params)
         oof_r2 = float(r2_score(df_full[target_col].values, oof_preds))
         print(f"[{tag}] OOF R²={oof_r2:.4f}", flush=True)
@@ -1948,7 +1996,13 @@ if __name__ == '__main__':
             df_val = _apply_x_clip(df_val, x_clip_bounds)
     df_clipped = _apply_x_clip(df, x_clip_bounds) if x_clip_bounds else df
 
-    # ── 自動特徴量エンジニアリング（thorough のみ、x_clip 後の値から生成） ──────
+    # ── 自動特徴量エンジニアリング（最終書き出しモデル用、thorough のみ、x_clip 後の値から生成） ──
+    #    高-H1: この derived_recipe は df_train(=fold0-train)でfitする。最終書き出しモデルの
+    #    学習にのみ使う分には評価対象ではないためリークにならないが、以前はこれをそのまま
+    #    OOF全fold共有の df_all_for_models に適用しており、fold1以降の検証行がfold0-trainの
+    #    recipe選定に混入してOOF R²が選択バイアスで上振れしていた。OOF評価用の特徴選定は
+    #    直後の fold-local ブロックで fold 毎に(そのfoldの検証行を一切見ずに)作り直す。
+    df_clipped_base = df_clipped  # FE適用前（fold-local FE/screeningの共有ソース）
     derived_recipe = []
     if thorough and n_rows >= FE_MIN_ROWS:
         derived_recipe = _build_derived_recipe(df_train, target_column, num_jobs=num_jobs)
@@ -1961,6 +2015,27 @@ if __name__ == '__main__':
     df_all_for_models = df_clipped if (use_oof and have_split) else None
     splits_for_models = cv_splits if (use_oof and have_split) else None
 
+    # ── fold-local FE・特徴量スクリーニング（高-H1: OOF評価の選択バイアス排除） ──────
+    #    以前は全fold共通(fold0-trainでfitしたrecipe/screen_cols)をOOF全体に適用しており、
+    #    fold1以降の検証行がfold0-trainのFE・スクリーニング選定に混入してOOF R²が上振れ
+    #    していた。ここでは各foldの学習側(そのfoldのva_idxを一切含まない)のみで
+    #    recipe/screeningを作り直す(LGBM probeのコスト増はfold数倍になるが許容する)。
+    df_all_per_fold = None
+    screen_cols_per_fold = None
+    if use_oof and have_split:
+        _emit_progress(8, "fold毎の特徴量選定を実行中")
+        df_all_per_fold = []
+        screen_cols_per_fold = []
+        for tr_idx, va_idx in cv_splits:
+            dtr_base = df_clipped_base.iloc[tr_idx]
+            recipe_fold = []
+            if thorough and len(tr_idx) >= FE_MIN_ROWS:
+                recipe_fold = _build_derived_recipe(dtr_base, target_column, num_jobs=num_jobs)
+            df_fold = _apply_derived(df_clipped_base, recipe_fold) if recipe_fold else df_clipped_base
+            df_all_per_fold.append(df_fold)
+            screen_cols_per_fold.append(
+                _lgbm_feature_screen(df_fold.iloc[tr_idx], target_column, num_jobs=num_jobs))
+
     # ── 学習は tmp ディレクトリに書き、成功時にアトミック入替 ─────────────────
     #    (キャンセル時に旧モデル一式が無傷で残る)
     script_dir      = os.path.dirname(os.path.abspath(__file__))
@@ -1970,7 +2045,7 @@ if __name__ == '__main__':
         shutil.rmtree(model_dir)
     os.makedirs(model_dir, exist_ok=True)
 
-    # 特徴量スクリーニング（軽量LGBMで重要度ゼロを除外 → GP/MLPの次元削減）
+    # 特徴量スクリーニング（最終書き出しモデル用。軽量LGBMで重要度ゼロを除外 → GP/MLPの次元削減）
     _emit_progress(12, "前処理が完了しました")
     screen_cols = _lgbm_feature_screen(df_train, target_column, num_jobs=num_jobs)
 
@@ -1980,19 +2055,21 @@ if __name__ == '__main__':
 
     def _run_linear():
         return _try_linear(df_train, df_val, target_column, model_dir, y_transform, y_params,
-                            df_all=df_all_for_models, use_oof=use_oof, splits=splits_for_models)
+                            df_all=df_all_for_models, use_oof=use_oof, splits=splits_for_models,
+                            df_all_per_fold=df_all_per_fold)
 
     def _run_lgbm():
         return _try_lgbm(df_train, df_val, target_column, model_dir, use_grid=thorough,
                           use_oof=use_oof, y_transform=y_transform, y_params=y_params,
                           df_all=df_all_for_models, num_jobs=num_jobs, splits=splits_for_models,
-                          prog=(20, 55) if thorough else None)
+                          prog=(20, 55) if thorough else None, df_all_per_fold=df_all_per_fold)
 
     def _run_gp():
         return _try_gp(df_train, df_val, target_column, model_dir, use_grid=thorough,
                        use_oof=use_oof, y_transform=y_transform, y_params=y_params,
                        df_all=df_all_for_models, feat_cols_override=screen_cols,
-                       splits=splits_for_models)
+                       splits=splits_for_models, df_all_per_fold=df_all_per_fold,
+                       screen_cols_per_fold=screen_cols_per_fold)
 
     def _run_mlp():
         if len(df_train) < MLP_MIN_ROWS:
@@ -2000,7 +2077,8 @@ if __name__ == '__main__':
         return _try_mlp(df_train, df_val, target_column, model_dir, use_grid=thorough,
                         use_oof=use_oof, y_transform=y_transform, y_params=y_params,
                         df_all=df_all_for_models, feat_cols_override=screen_cols,
-                        splits=splits_for_models)
+                        splits=splits_for_models, df_all_per_fold=df_all_per_fold,
+                        screen_cols_per_fold=screen_cols_per_fold)
 
     if thorough:
         # じっくりモード: LightGBMは予選→本戦で詳細な進捗ログを出すため逐次実行を維持
@@ -2047,12 +2125,14 @@ if __name__ == '__main__':
         _emit_progress(78, "追加のモデルを学習中")
         rf_res = _try_sktree('rf', df_train, target_column, model_dir,
                              y_transform=y_transform, y_params=y_params,
-                             df_all=df_all_for_models, splits=splits_for_models, num_jobs=num_jobs)
+                             df_all=df_all_for_models, splits=splits_for_models, num_jobs=num_jobs,
+                             df_all_per_fold=df_all_per_fold)
         if rf_res[0] is not None and np.isfinite(rf_res[0]):
             candidates['LGBM-RF'] = rf_res
         xt_res = _try_sktree('xt', df_train, target_column, model_dir,
                              y_transform=y_transform, y_params=y_params,
-                             df_all=df_all_for_models, splits=splits_for_models, num_jobs=num_jobs)
+                             df_all=df_all_for_models, splits=splits_for_models, num_jobs=num_jobs,
+                             df_all_per_fold=df_all_per_fold)
         if xt_res[0] is not None and np.isfinite(xt_res[0]):
             candidates['LGBM-XT'] = xt_res
 
