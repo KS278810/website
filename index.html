@@ -531,16 +531,16 @@
     </div>
     <div class="su-app-name">T-regressor</div>
     <div class="su-scan-track"><div class="su-scan-beam"></div></div>
-    <div class="su-status" id="suStatus" aria-live="polite">起動中...</div>
+    <div class="su-status" id="suStatus" data-i18n="ui.startupStatusInitial" aria-live="polite">起動中...</div>
     <div class="su-progress-track">
         <div class="su-progress-bar" id="suProgressBar" style="width:5%"></div>
     </div>
-    <button id="suRetryBtn" class="retry-btn" style="display:none;">↻ 再試行</button>
+    <button id="suRetryBtn" class="retry-btn" data-i18n="ui.suRetryBtn" style="display:none;">↻ 再試行</button>
 </div>
 
 <header>
     <img src="assets/logo2.png" class="logo" alt="T-regressor">
-    <button id="settingsBtn" class="settings-gear-btn" title="設定"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg></button>
+    <button id="settingsBtn" class="settings-gear-btn" data-i18n-title="ui.settingsBtnTitle" title="設定"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg></button>
 </header>
 
 <!-- ─ ワークフローパネル ─ -->
@@ -550,7 +550,7 @@
     <div class="wf-step">
         <div class="step-hdr"><span class="step-num sn-1">1</span>DROP CSV</div>
         <div id="dropZone" class="drop-zone action-pulse" role="button" tabindex="0">
-            <div class="drop-zone-hint">↓ CSV をドロップ</div>
+            <div class="drop-zone-hint" data-i18n="ui.dropZoneHint">↓ CSV をドロップ</div>
             <div id="subFileName" class="file-name"></div>
         </div>
         <div id="inputNote" class="deploy-note" style="display:none;"></div>
@@ -571,7 +571,7 @@
         <div class="step-hdr"><span class="step-num sn-3">3</span>PREDICT</div>
         <div class="predict-col">
             <div id="predictZone" class="drop-zone drop-zone-disabled" role="button" tabindex="0">
-                <div id="predictSubLabel" class="predict-sub-label">学習後に使えます</div>
+                <div id="predictSubLabel" class="predict-sub-label" data-i18n="ui.predictSubLabelInitial">学習後に使えます</div>
                 <div id="predictFileName" class="file-name"></div>
             </div>
         </div>
@@ -581,7 +581,7 @@
     <div class="wf-step">
         <div class="step-hdr"><span class="step-num sn-4">4</span>DEPLOY</div>
         <div class="deploy-col">
-            <button id="exportBtn" class="btn" disabled>学習済モデルのDL</button>
+            <button id="exportBtn" class="btn" disabled data-i18n="ui.exportBtn">学習済モデルのDL</button>
             <div id="deployNote" class="deploy-note"></div>
         </div>
     </div>
@@ -592,8 +592,8 @@
     <div class="char-panel">
         <div id="chatBubble" class="chat-bubble">
             <div class="bubble-inner">
-                <span id="chatText" aria-live="polite">学習データを左の枠にドロップしてね。</span>
-                <button id="sampleCsvBtn" class="sample-csv-btn">サンプルCSVを入手</button>
+                <span id="chatText" data-i18n="ui.chatTextInitial" aria-live="polite">学習データを左の枠にドロップしてね。</span>
+                <button id="sampleCsvBtn" class="sample-csv-btn" data-i18n="ui.sampleCsvBtn">サンプルCSVを入手</button>
             </div>
         </div>
         <div id="charBox" class="char-box"></div>
@@ -605,7 +605,7 @@
         <!-- Target列選択 -->
         <div id="targetSelectPanel">
             <div class="target-select-title">TARGET COLUMN SELECT</div>
-            <div class="target-select-sub">予測したい列を選んでください（右端がデフォルト）</div>
+            <div class="target-select-sub" data-i18n="ui.targetSelectSub">予測したい列を選んでください（右端がデフォルト）</div>
             <div id="colList" class="col-list"></div>
         </div>
 
@@ -622,7 +622,7 @@
             <div id="predictErrorBanner" class="predict-error-banner" style="display:none;">
                 <span class="peb-icon">!</span>
                 <div class="peb-content">
-                    <div class="peb-title">予測エラー — CSV を再ドロップで再試行</div>
+                    <div class="peb-title" data-i18n="ui.predictErrorTitle">予測エラー — CSV を再ドロップで再試行</div>
                     <div id="pebMsg" class="peb-msg"></div>
                 </div>
                 <button class="peb-close" onclick="clearPredictError()">✕</button>
@@ -634,7 +634,7 @@
             <div id="warnBanner" class="predict-error-banner warn-banner" style="display:none;" aria-live="polite">
                 <span class="peb-icon">⚠</span>
                 <div class="peb-content">
-                    <div class="peb-title">注意事項</div>
+                    <div class="peb-title" data-i18n="ui.warnBannerTitle">注意事項</div>
                     <div id="warnBannerMsg" class="peb-msg"></div>
                 </div>
                 <button class="peb-close" onclick="dismissWarnBanner()">✕</button>
@@ -647,14 +647,14 @@
                     <div id="evalBadge" class="eval-badge val" style="display:none;">VALIDATION</div>
                     <div id="r2Interpretation" class="r2-interp" style="display:none;"></div>
                     <div id="dataWarning" class="data-warning" style="display:none;"></div>
-                    <button id="retrainThoroughBtn" class="detail-btn">じっくりモードで再学習</button>
-                    <button class="detail-btn" onclick="openDetailPopup()">詳細を見る ↗</button>
+                    <button id="retrainThoroughBtn" class="detail-btn" data-i18n="ui.retrainThoroughBtn">じっくりモードで再学習</button>
+                    <button class="detail-btn" onclick="openDetailPopup()" data-i18n="ui.detailBtn">詳細を見る ↗</button>
                 </div>
                 <div class="trained-right" style="flex-direction:column;">
                     <div class="tr-tabs">
-                        <button id="tabFeature" class="tr-tab active" onclick="showTrainedTab('feature')">特徴量重要度</button>
-                        <button id="tabCandidates" class="tr-tab" onclick="showTrainedTab('candidates')" style="display:none;">候補モデル</button>
-                        <button id="tabPredict" class="tr-tab" onclick="showTrainedTab('predict')" style="display:none;">予測結果</button>
+                        <button id="tabFeature" class="tr-tab active" onclick="showTrainedTab('feature')" data-i18n="ui.tabFeature">特徴量重要度</button>
+                        <button id="tabCandidates" class="tr-tab" onclick="showTrainedTab('candidates')" style="display:none;" data-i18n="ui.tabCandidates">候補モデル</button>
+                        <button id="tabPredict" class="tr-tab" onclick="showTrainedTab('predict')" style="display:none;" data-i18n="ui.tabPredict">予測結果</button>
                     </div>
                     <div id="featureRankSection" style="display:flex;flex-direction:column;flex:1;min-height:0;">
                         <div id="featureBars" class="feature-bars-scroll"></div>
@@ -665,7 +665,7 @@
                     <div id="predictResultSection" style="display:none;flex-direction:column;flex:1;height:0;min-height:0;">
                         <div style="flex-shrink:0;display:flex;align-items:center;justify-content:space-between;gap:10px;">
                             <div id="predictRowsLabel" class="predict-rows-label"></div>
-                            <button id="predictDownloadBtn" class="btn" style="display:none;padding:6px 14px;font-size:12px;">CSVをDL</button>
+                            <button id="predictDownloadBtn" class="btn" style="display:none;padding:6px 14px;font-size:12px;" data-i18n="ui.predictDownloadBtn">CSVをDL</button>
                         </div>
                         <div class="preview-table-wrap" style="flex:1;overflow-y:auto;overflow-x:auto;min-height:0;">
                             <table id="previewTable" class="preview-table">
@@ -693,7 +693,7 @@
                 <div class="error-icon">ERROR</div>
                 <div class="error-title">PROCESS FAILURE</div>
                 <div id="errorMsg" class="error-msg">—</div>
-                <button class="retry-btn" onclick="resetToInitial()">↩ 最初からやり直す</button>
+                <button class="retry-btn" onclick="resetToInitial()" data-i18n="ui.retryBtn">↩ 最初からやり直す</button>
             </div>
         </div>
     </div>
@@ -718,27 +718,474 @@
             <button id="settingsCloseBtn" class="settings-close-btn">✕</button>
         </div>
         <div class="settings-row">
-            <div class="settings-label">モード</div>
+            <div class="settings-label">言語 / LANGUAGE</div>
+            <select id="langSelect" class="settings-select">
+                <option value="ja">日本語</option>
+                <option value="en">English</option>
+            </select>
+        </div>
+        <div class="settings-row">
+            <div class="settings-label" data-i18n="ui.settingsModeLabel">モード</div>
             <select id="modelStrategySelect" class="settings-select">
-                <option value="quick" selected>お急ぎ</option>
-                <option value="thorough">じっくり</option>
+                <option value="quick" data-i18n="ui.settingsModeQuick" selected>お急ぎ</option>
+                <option value="thorough" data-i18n="ui.settingsModeThorough">じっくり</option>
             </select>
         </div>
         <div class="settings-info-box">
-            <div class="settings-info-title">モードについて</div>
-            <div class="settings-info-body">
+            <div class="settings-info-title" data-i18n="ui.settingsInfoTitle">モードについて</div>
+            <div class="settings-info-body" data-i18n="ui.settingsInfoBody">
                 <b>お急ぎ</b>：線形回帰・LightGBM・ガウス過程・ニューラルネットの4種類（データ量により自動選択）を標準設定で手早く学習し、最も精度の良いものを採用します。<br>
                 <b>じっくり</b>：交差検証で公平に評価しながら、特徴量どうしの掛け合わせなど新しい特徴量を自動生成し、多数のパラメータ候補を予選→本戦方式で幅広く探索。さらに6種類のモデルを最適な重みで組み合わせるアンサンブルも試し、より高い精度を追求します（学習時間は数十秒〜数分）。
             </div>
         </div>
         <div class="settings-row">
-            <div class="settings-label">CPU並列数</div>
+            <div class="settings-label" data-i18n="ui.settingsCpuJobsLabel">CPU並列数</div>
             <input id="cpuNumJobsInput" type="number" class="settings-select" value="4" min="1" max="16">
         </div>
     </div>
 </div>
 
 <script>
+    // ── i18n (日本語/英語切替) ──────────────────────────────────────────────────
+    // キーはドット区切りの名前空間(由来が分かるように): ui.*=静的HTML/固定UI文言,
+    // robot.*=ロボの吹き出し, startup.*=起動シーケンス, progress.*=Python PROGRESS由来,
+    // error.*=Python ERROR由来, r2interp.*/warning.*=RESULT_JSON由来, detail.*=詳細ポップアップ,
+    // scatter.*=散布図, status.*=ステータスバー, common.*=共通ユーティリティ。
+    // 値は {{var}} プレースホルダ文字列。t(key, params)がPython由来のキー+paramsとも
+    // 統一的に扱えるようにするため、関数値方式ではなくこの方式を採用している。
+    const I18N = {
+        ja: {
+            'common.listSep': '、',
+
+            'ui.startupStatusInitial': '起動中...',
+            'ui.suRetryBtn': '↻ 再試行',
+            'ui.settingsBtnTitle': '設定',
+            'ui.dropZoneHint': '↓ CSV をドロップ',
+            'ui.predictSubLabelInitial': '学習後に使えます',
+            'ui.exportBtn': '学習済モデルのDL',
+            'ui.chatTextInitial': '学習データを左の枠にドロップしてね。',
+            'ui.sampleCsvBtn': 'サンプルCSVを入手',
+            'ui.targetSelectSub': '予測したい列を選んでください（右端がデフォルト）',
+            'ui.predictErrorTitle': '予測エラー — CSV を再ドロップで再試行',
+            'ui.warnBannerTitle': '注意事項',
+            'ui.retrainThoroughBtn': 'じっくりモードで再学習',
+            'ui.detailBtn': '詳細を見る ↗',
+            'ui.tabFeature': '特徴量重要度',
+            'ui.tabCandidates': '候補モデル',
+            'ui.tabPredict': '予測結果',
+            'ui.predictDownloadBtn': 'CSVをDL',
+            'ui.retryBtn': '↩ 最初からやり直す',
+            'ui.settingsModeLabel': 'モード',
+            'ui.settingsModeQuick': 'お急ぎ',
+            'ui.settingsModeThorough': 'じっくり',
+            'ui.settingsInfoTitle': 'モードについて',
+            'ui.settingsInfoBody':
+                '<b>お急ぎ</b>：線形回帰・LightGBM・ガウス過程・ニューラルネットの4種類（データ量により自動選択）を標準設定で手早く学習し、最も精度の良いものを採用します。<br>' +
+                '<b>じっくり</b>：交差検証で公平に評価しながら、特徴量どうしの掛け合わせなど新しい特徴量を自動生成し、多数のパラメータ候補を予選→本戦方式で幅広く探索。さらに6種類のモデルを最適な重みで組み合わせるアンサンブルも試し、より高い精度を追求します（学習時間は数十秒〜数分）。',
+            'ui.settingsCpuJobsLabel': 'CPU並列数',
+            'ui.settingsCpuJobsDisabledTitle': 'ブラウザ版では無効です（シングルスレッド実行）',
+
+            'startup.resourceCheck': 'リソース確認...',
+            'startup.scanModel': '前回モデルをスキャン...',
+            'startup.uiInit': 'UI 初期化...',
+            'startup.failed': '起動に失敗しました: {{detail}}',
+            'startup.pythonExtracting': 'Python 環境を展開中...',
+            'startup.extractingProgress': '展開中... {{current}} / {{total}} ファイル',
+            'startup.setupComplete': 'セットアップ完了！',
+            'startup.extractError': 'エラー: {{detail}}',
+            'startup.boot': 'エンジンを起動中…',
+            'startup.libs': '計算ライブラリを読込中…（同梱データのみ・ネットワーク不要）',
+            'startup.extract': 'モデルコードを展開中…',
+            'startup.ready': '準備完了',
+
+            'robot.dropHint': '学習データを左の枠にドロップしてね。',
+            'robot.busyTraining': '学習中だよ。終わるまで待つか、CANCELしてね。',
+            'robot.busyPredicting': '予測の実行中だよ。終わるまで待ってね。',
+            'robot.nonCsvDrop': 'CSVファイルだけ読めるよ。',
+            'robot.dropMiss': '枠の上に落としてね。',
+            'robot.headerReadFail': 'CSVの列名を読み取れなかった。\nファイルの1行目にヘッダがあるか確認してね。',
+            'robot.headersLoaded': '{{n}}列を読み込んだよ。\n予測したい列を選んでね。',
+            'robot.targetChosen': '「{{col}}」を予測するよ。\nTRAINボタンで学習スタート！',
+            'robot.predictingTauri': '予測中... ちょっと待ってね。',
+            'robot.predictingWeb': '予測中... ちょっと待ってね。\n(ブラウザが一時的に反応しなくなることがあるよ)',
+            'robot.predictFailed': '予測でエラーが起きた。\nCSVをもう一度ドロップしてみてね。',
+            'robot.trainFailedLow': 'R²={{r2}} で精度不足。\nデータ追加か別の列を試してみよう。',
+            'robot.trainDoneOk': '学習完了！ R²={{r2}} 右の枠にCSVをドロップして予測しよう。',
+            'robot.trainErrorGeneric': '学習でエラーが起きた。\n下のエラー内容を確認してね。',
+            'robot.needCsvFirst': '先に①の枠へCSVをドロップしてね。',
+            'robot.trainingTauri': '学習中... しばらく待ってね',
+            'robot.trainingWeb': '学習中... しばらく待ってね(ブラウザが一時的に反応しなくなることがあるよ。\nじっくりモードだと数十秒以上かかる場合も)',
+            'robot.trainCancelledWithResult': '学習をキャンセルしたよ。前回の結果を表示中。',
+            'robot.trainCancelled': '学習をキャンセルしたよ。',
+            'robot.predictDoneWithDl': '{{rows}}件を予測した！\n「CSVをDL」ボタンで保存できるよ。',
+            'robot.predictDoneNoDl': '{{rows}}件を予測した！\n結果はCSVファイルに保存済み。',
+            'robot.predictDoneWarningHint': '\n⚠ 注意事項は下に出してるよ。',
+            'robot.deploySavedWithWarning': '保存した！注意事項は下に出してるよ。',
+            'robot.deploySavedQuickHint': 'モデルを保存した！\nさらに上げたいならじっくりモードへ。',
+            'robot.deploySaved': 'モデルを保存した！',
+            'robot.deploySaveFailed': '保存でエラーが起きた。\nもう一度試してみてね。{{detail}}',
+            'robot.sampleLoadFailed': 'サンプルCSVの読込に失敗した: {{detail}}',
+            'robot.sampleSaved': 'サンプルCSVを保存したよ！\nドロップして試してみてね。',
+            'robot.sampleSaveFailed': 'サンプルCSVの保存に失敗した: {{detail}}',
+            'robot.tryingLinear': '線形モデルを試してる...',
+            'robot.trainingLgbm': 'LightGBMで学習中...',
+            'robot.tryingGp': 'ガウス過程モデルを試してる...',
+            'robot.gpDone': 'ガウス過程モデル 完了',
+            'robot.trainingMlp': 'ニューラルネットを学習中...',
+            'robot.savingModel': 'モデルを保存中...',
+
+            'detail.presetThorough': 'じっくり',
+            'detail.presetQuick': 'お急ぎ',
+            'detail.evalOof': 'OOF交差検証 (n={{n}})',
+            'detail.evalVal': '検証データ (n={{n}})',
+            'detail.evalTrain': '学習データ（ホールドアウトなし）',
+            'detail.algorithm': 'アルゴリズム',
+            'detail.trainMode': '学習モード',
+            'detail.gpFormat': 'GP形式',
+            'detail.targetCol': '予測対象列',
+            'detail.trainRows': '学習行数',
+            'detail.valRows': '検証行数',
+            'detail.rowsValue': '{{n}} 行',
+            'detail.model': 'モデル',
+            'detail.accuracy': '精度指標',
+            'detail.data': 'データ',
+            'detail.predVsActual': '予測 vs 実測',
+            'detail.scatterNoteOof': '交差検証（未学習データ相当）での予測',
+            'detail.scatterNoteVal': '検証データでの予測',
+            'detail.scatterNoteTrain': '学習データでの予測',
+            'detail.scatterCaptionSuffix': '・点が対角線に近いほど高精度',
+            'detail.predictableRange': '予測できる範囲',
+            'detail.outputLabel': '出力',
+            'detail.rangeSpan': '{{lo}} 〜 {{hi}}',
+            'detail.rangeNote': 'この範囲は学習データの実測値の幅です。予測値はこの範囲内に収まるよう調整され、範囲外への外挿（大きく飛び出した予測）は行いません。',
+
+            'scatter.noData': '表示できるデータがありません',
+            'scatter.trueAxis': '実測値',
+            'scatter.predAxis': '予測値',
+
+            'ui.evalBadgeVal': 'VALIDATION (n={{n}})',
+            'ui.evalBadgeOof': 'OOF K-FOLD (n={{n}})',
+            'ui.evalBadgeTrain': 'TRAIN (no holdout)',
+            'ui.rmseLabel': 'RMSE {{v}}',
+            'ui.maeLabel': 'MAE {{v}}',
+            'ui.r2Below0': 'R²<0: 予測精度不足',
+            'ui.deployBlockedNote': '精度不足のためデプロイ不可',
+            'ui.predictReadyHint': '↓ CSV をドロップ / クリック',
+            'ui.noExportableModel': '⚠ 配布可能なモデルがありません',
+            'ui.deploySubstitutedNote': '配布用モデルは {{model}}(R²={{r2}})を使用',
+            'ui.predictAgainHint': '↩ 再予測可',
+            'ui.predictRetryHint': '↩ 再試行: CSVをドロップ',
+            'ui.predictRowsLabel': '{{rows}}件を予測 → {{name}}',
+            'ui.deploySubstitutedFull': '※今回の設定では画面表示中の{{shown}}は書き出せず、{{used}}(R²={{r2}})を代わりに使用しています。',
+            'ui.deployedNote': '✓ 配布完了',
+            'ui.deployedNoteSubstituted': '✓ 配布完了({{model}} を使用)',
+            'ui.sampleCsvLoading': '読込中...',
+            'ui.sampleCsvSaving': '保存中...',
+            'ui.sampleCsvSavedCheckmark': '✓ 保存済み',
+            'ui.inputNoteLoaded': '✓ 読込完了',
+
+            'warning.catDroppedFull': '⚠ カーディナリティが行数に対して高すぎるため除外した列: 「{{cols}}」。この列は学習・配布ファイルとも一切使われません。',
+            'warning.catDroppedDeployNote': '⚠ カテゴリ列「{{cols}}」はカーディナリティが高すぎるため除外されています(精度低下に注意)。',
+            'warning.missingColsHint': '⚠ 学習時の列「{{cols}}」が見つからず中央値で補完しました。予測精度が下がる場合があります。',
+            'warning.missingColsMore': ' ほか',
+            'warning.small_full_data': 'データが {{n_rows}} 行のため全データで学習。R² は訓練スコアのため楽観的な値です。',
+            'warning.oof_eval': 'OOF (交差検証) で評価。',
+            'warning.oof_eval_small_n': '少ないデータ（{{n_rows}} 行）— OOF (交差検証) で評価。',
+            'warning.small_val_set': '検証セットが {{n_val}} 行と少なく R² が不安定な場合があります。100行以上推奨。',
+            'warning.target_na_excluded': '目的変数が欠損している {{n}} 行を学習から除外しました。',
+            'warning.outliers_corrected': 'Y 外れ値 {{n}} 行を許容範囲内に補正しました（IQR×{{iqr_mult}}）。',
+            'warning.duplicate_rows': '重複行が{{n}}件あります。評価が楽観的になる可能性があります。',
+            'warning.cat_cols_dropped': 'カーディナリティが行数に対して高すぎるため除外した列: {{cols}}',
+
+            'status.ready': 'READY',
+            'status.deployed': '✓ DEPLOYED',
+            'status.training': '学習中...',
+            'status.trainDone': '学習完了',
+            'status.trainDoneCheckmark': '✓ 学習完了',
+            'status.predicting': '推論実行中...',
+            'status.deploying': 'デプロイ中...',
+
+            'progress.reading_csv': 'CSVを読み込み中',
+            'progress.fold_feature_select': 'fold毎の特徴量選定を実行中',
+            'progress.preprocess_done': '前処理が完了しました',
+            'progress.linear_fit': '線形モデルを学習中',
+            'progress.lgbm_fit': 'LightGBMを学習中',
+            'progress.mlp_gp_fit': 'ニューラルネット・ガウス過程を学習中',
+            'progress.parallel4_fit': '4種類のモデルを並列学習中',
+            'progress.lgbm_search': '最適なパラメータを探索中 {{pidx}}/{{n_cand}}',
+            'progress.extra_models_fit': '追加のモデルを学習中',
+            'progress.ensemble_optimize': 'モデルを組み合わせて最適化中',
+            'progress.saving_model': 'モデルを保存中',
+            'progress.done': '完了',
+
+            'error.target_col_not_found': '指定されたターゲット列「{{col}}」がCSVに存在しません',
+            'error.target_col_not_numeric': 'ターゲット列「{{col}}」に数値でない値が含まれています（例: {{example}}）',
+            'error.target_all_na': '目的変数に有効な値がある行がありません',
+            'error.csv_path_missing': 'CSVパスが指定されていません',
+            'error.duplicate_columns': '列名が重複しています（前後空白を除去後）: {{cols}}',
+            'error.no_valid_model': '有効なモデルが1つも訓練できませんでした',
+            'error.result_move_failed': '学習結果の配置に失敗しました（他のプロセスが使用中の可能性）: {{detail}}',
+            'error.predict_failed': '予測でエラーが起きました: {{detail}}',
+            'error.predictTemplateFetchFailed': 'predict_template.html の取得に失敗しました(HTTP {{status}})',
+            'error.modelDataNotFound': 'モデルデータが見つかりません。再学習してください。',
+            'error.predictTemplateFormatInvalid': 'predict_template.html の形式が想定と異なります(プレースホルダ不在)',
+
+            'r2interp.very_high': '非常に高精度',
+            'r2interp.high': '高精度（実用レベル）',
+            'r2interp.practical': '実用的な精度',
+            'r2interp.moderate': '精度はやや低め',
+            'r2interp.insufficient': '精度不足',
+            'r2interp.nonfunctional': 'モデルが機能していません',
+        },
+        en: {
+            'common.listSep': ', ',
+
+            'ui.startupStatusInitial': 'Starting...',
+            'ui.suRetryBtn': '↻ Retry',
+            'ui.settingsBtnTitle': 'Settings',
+            'ui.dropZoneHint': '↓ Drop CSV here',
+            'ui.predictSubLabelInitial': 'Available after training',
+            'ui.exportBtn': 'Download trained model',
+            'ui.chatTextInitial': 'Drop your training data into the box on the left.',
+            'ui.sampleCsvBtn': 'Get sample CSV',
+            'ui.targetSelectSub': 'Choose the column to predict (rightmost is default)',
+            'ui.predictErrorTitle': 'Prediction error — drop the CSV again to retry',
+            'ui.warnBannerTitle': 'Notes',
+            'ui.retrainThoroughBtn': 'Retrain in Thorough mode',
+            'ui.detailBtn': 'View details ↗',
+            'ui.tabFeature': 'Feature importance',
+            'ui.tabCandidates': 'Candidate models',
+            'ui.tabPredict': 'Prediction results',
+            'ui.predictDownloadBtn': 'Download CSV',
+            'ui.retryBtn': '↩ Start over',
+            'ui.settingsModeLabel': 'Mode',
+            'ui.settingsModeQuick': 'Quick',
+            'ui.settingsModeThorough': 'Thorough',
+            'ui.settingsInfoTitle': 'About modes',
+            'ui.settingsInfoBody':
+                '<b>Quick</b>: Trains 4 model types (Linear, LightGBM, Gaussian Process, Neural Net — auto-selected by data size) with standard settings and picks the most accurate one.<br>' +
+                '<b>Thorough</b>: Evaluates fairly with cross-validation, auto-generates new features (e.g. feature interactions), and explores many hyperparameter candidates via a qualifier→final-round search. Also tries an ensemble that blends up to 6 model types with optimal weights for even higher accuracy (training takes tens of seconds to a few minutes).',
+            'ui.settingsCpuJobsLabel': 'CPU parallelism',
+            'ui.settingsCpuJobsDisabledTitle': 'Disabled in the browser version (single-threaded)',
+
+            'startup.resourceCheck': 'Checking resources...',
+            'startup.scanModel': 'Scanning for previous model...',
+            'startup.uiInit': 'Initializing UI...',
+            'startup.failed': 'Startup failed: {{detail}}',
+            'startup.pythonExtracting': 'Extracting Python environment...',
+            'startup.extractingProgress': 'Extracting... {{current}} / {{total}} files',
+            'startup.setupComplete': 'Setup complete!',
+            'startup.extractError': 'Error: {{detail}}',
+            'startup.boot': 'Starting engine…',
+            'startup.libs': 'Loading libraries… (bundled data only, no network)',
+            'startup.extract': 'Unpacking model code…',
+            'startup.ready': 'Ready',
+
+            'robot.dropHint': 'Drop your training data into the box on the left.',
+            'robot.busyTraining': "Training is in progress. Wait for it to finish, or hit CANCEL.",
+            'robot.busyPredicting': 'A prediction is running. Please wait for it to finish.',
+            'robot.nonCsvDrop': 'Only CSV files can be read here.',
+            'robot.dropMiss': 'Drop it onto one of the boxes.',
+            'robot.headerReadFail': "Couldn't read the CSV column names.\nCheck that the first row has headers.",
+            'robot.headersLoaded': 'Loaded {{n}} columns.\nChoose which one to predict.',
+            'robot.targetChosen': "I'll predict “{{col}}”.\nHit TRAIN to start training!",
+            'robot.predictingTauri': 'Predicting... one moment.',
+            'robot.predictingWeb': 'Predicting... one moment.\n(The browser may briefly stop responding)',
+            'robot.predictFailed': 'Something went wrong predicting.\nTry dropping the CSV again.',
+            'robot.trainFailedLow': 'R²={{r2}} — not accurate enough.\nTry more data or a different target column.',
+            'robot.trainDoneOk': 'Training done! R²={{r2}}. Drop a CSV on the right to predict.',
+            'robot.trainErrorGeneric': 'Something went wrong during training.\nCheck the error details below.',
+            'robot.needCsvFirst': 'Drop a CSV into box ① first.',
+            'robot.trainingTauri': 'Training... please wait',
+            'robot.trainingWeb': 'Training... please wait (the browser may briefly stop responding.\nThorough mode can take tens of seconds or more)',
+            'robot.trainCancelledWithResult': 'Training cancelled. Showing the previous result.',
+            'robot.trainCancelled': 'Training cancelled.',
+            'robot.predictDoneWithDl': 'Predicted {{rows}} rows!\nUse the "Download CSV" button to save it.',
+            'robot.predictDoneNoDl': 'Predicted {{rows}} rows!\nResults are already saved to a CSV file.',
+            'robot.predictDoneWarningHint': '\n⚠ See the notes below.',
+            'robot.deploySavedWithWarning': 'Saved! See the notes below.',
+            'robot.deploySavedQuickHint': 'Model saved!\nSwitch to Thorough mode for even higher accuracy.',
+            'robot.deploySaved': 'Model saved!',
+            'robot.deploySaveFailed': 'Something went wrong while saving.\nPlease try again.{{detail}}',
+            'robot.sampleLoadFailed': 'Failed to load the sample CSV: {{detail}}',
+            'robot.sampleSaved': 'Sample CSV saved!\nDrop it in to try it out.',
+            'robot.sampleSaveFailed': 'Failed to save the sample CSV: {{detail}}',
+            'robot.tryingLinear': 'Trying a linear model...',
+            'robot.trainingLgbm': 'Training with LightGBM...',
+            'robot.tryingGp': 'Trying a Gaussian Process model...',
+            'robot.gpDone': 'Gaussian Process model done',
+            'robot.trainingMlp': 'Training a neural net...',
+            'robot.savingModel': 'Saving the model...',
+
+            'detail.presetThorough': 'Thorough',
+            'detail.presetQuick': 'Quick',
+            'detail.evalOof': 'OOF cross-validation (n={{n}})',
+            'detail.evalVal': 'Validation data (n={{n}})',
+            'detail.evalTrain': 'Training data (no holdout)',
+            'detail.algorithm': 'Algorithm',
+            'detail.trainMode': 'Training mode',
+            'detail.gpFormat': 'GP format',
+            'detail.targetCol': 'Target column',
+            'detail.trainRows': 'Training rows',
+            'detail.valRows': 'Validation rows',
+            'detail.rowsValue': '{{n}} rows',
+            'detail.model': 'Model',
+            'detail.accuracy': 'Accuracy',
+            'detail.data': 'Data',
+            'detail.predVsActual': 'Predicted vs Actual',
+            'detail.scatterNoteOof': 'Predictions on cross-validation (unseen-equivalent) data',
+            'detail.scatterNoteVal': 'Predictions on validation data',
+            'detail.scatterNoteTrain': 'Predictions on training data',
+            'detail.scatterCaptionSuffix': ' · closer to the diagonal = more accurate',
+            'detail.predictableRange': 'Predictable range',
+            'detail.outputLabel': 'Output',
+            'detail.rangeSpan': '{{lo}} to {{hi}}',
+            'detail.rangeNote': "This range reflects the actual values in the training data. Predictions are constrained to stay within it — the model never extrapolates far beyond this range.",
+
+            'scatter.noData': 'No data to display',
+            'scatter.trueAxis': 'Actual',
+            'scatter.predAxis': 'Predicted',
+
+            'ui.evalBadgeVal': 'VALIDATION (n={{n}})',
+            'ui.evalBadgeOof': 'OOF K-FOLD (n={{n}})',
+            'ui.evalBadgeTrain': 'TRAIN (no holdout)',
+            'ui.rmseLabel': 'RMSE {{v}}',
+            'ui.maeLabel': 'MAE {{v}}',
+            'ui.r2Below0': 'R²<0: not accurate enough',
+            'ui.deployBlockedNote': 'Cannot deploy — accuracy too low',
+            'ui.predictReadyHint': '↓ Drop or click to select a CSV',
+            'ui.noExportableModel': '⚠ No exportable model available',
+            'ui.deploySubstitutedNote': 'Deploying with {{model}} (R²={{r2}}) instead',
+            'ui.predictAgainHint': '↩ Predict again',
+            'ui.predictRetryHint': '↩ Retry: drop a CSV',
+            'ui.predictRowsLabel': 'Predicted {{rows}} rows → {{name}}',
+            'ui.deploySubstitutedFull': 'The model shown ({{shown}}) can’t be exported with this configuration, so {{used}} (R²={{r2}}) is used instead.',
+            'ui.deployedNote': '✓ Deployed',
+            'ui.deployedNoteSubstituted': '✓ Deployed (using {{model}})',
+            'ui.sampleCsvLoading': 'Loading...',
+            'ui.sampleCsvSaving': 'Saving...',
+            'ui.sampleCsvSavedCheckmark': '✓ Saved',
+            'ui.inputNoteLoaded': '✓ Loaded',
+
+            'warning.catDroppedFull': '⚠ Excluded (cardinality too high relative to row count): “{{cols}}”. These columns are unused for both training and exported models.',
+            'warning.catDroppedDeployNote': '⚠ Categorical column(s) “{{cols}}” were excluded (cardinality too high — accuracy may be affected).',
+            'warning.missingColsHint': '⚠ Column(s) “{{cols}}” from training were not found and were filled with the median. Accuracy may be reduced.',
+            'warning.missingColsMore': ' and more',
+            'warning.small_full_data': 'Data has only {{n_rows}} rows, so the full dataset was used for training. R² is a training score and may be optimistic.',
+            'warning.oof_eval': 'Evaluated via OOF cross-validation.',
+            'warning.oof_eval_small_n': 'Small dataset ({{n_rows}} rows) — evaluated via OOF cross-validation.',
+            'warning.small_val_set': 'The validation set has only {{n_val}} rows, so R² may be unstable. 100+ rows recommended.',
+            'warning.target_na_excluded': 'Excluded {{n}} rows with a missing target value from training.',
+            'warning.outliers_corrected': 'Clipped {{n}} target outlier rows to a bounded range (IQR×{{iqr_mult}}).',
+            'warning.duplicate_rows': 'There are {{n}} duplicate rows. This may make the evaluation overly optimistic.',
+            'warning.cat_cols_dropped': 'Excluded columns (cardinality too high relative to row count): {{cols}}',
+
+            'status.ready': 'READY',
+            'status.deployed': '✓ DEPLOYED',
+            'status.training': 'Training...',
+            'status.trainDone': 'Training complete',
+            'status.trainDoneCheckmark': '✓ Training complete',
+            'status.predicting': 'Predicting...',
+            'status.deploying': 'Deploying...',
+
+            'progress.reading_csv': 'Reading CSV',
+            'progress.fold_feature_select': 'Selecting features per fold',
+            'progress.preprocess_done': 'Preprocessing complete',
+            'progress.linear_fit': 'Training linear model',
+            'progress.lgbm_fit': 'Training LightGBM',
+            'progress.mlp_gp_fit': 'Training neural net & Gaussian process',
+            'progress.parallel4_fit': 'Training 4 models in parallel',
+            'progress.lgbm_search': 'Searching hyperparameters {{pidx}}/{{n_cand}}',
+            'progress.extra_models_fit': 'Training additional models',
+            'progress.ensemble_optimize': 'Optimizing model ensemble',
+            'progress.saving_model': 'Saving model',
+            'progress.done': 'Done',
+
+            'error.target_col_not_found': 'Target column “{{col}}” was not found in the CSV',
+            'error.target_col_not_numeric': 'Target column “{{col}}” contains non-numeric values (e.g. {{example}})',
+            'error.target_all_na': 'No rows have a valid target value',
+            'error.csv_path_missing': 'No CSV path was specified',
+            'error.duplicate_columns': 'Duplicate column names (after trimming whitespace): {{cols}}',
+            'error.no_valid_model': 'No model could be trained successfully',
+            'error.result_move_failed': 'Failed to move the training result (another process may be using it): {{detail}}',
+            'error.predict_failed': 'Prediction failed: {{detail}}',
+            'error.predictTemplateFetchFailed': 'Failed to fetch predict_template.html (HTTP {{status}})',
+            'error.modelDataNotFound': 'No model data found. Please retrain.',
+            'error.predictTemplateFormatInvalid': 'predict_template.html has an unexpected format (placeholder missing)',
+
+            'r2interp.very_high': 'Very high accuracy',
+            'r2interp.high': 'High accuracy (production-ready)',
+            'r2interp.practical': 'Practical accuracy',
+            'r2interp.moderate': 'Somewhat low accuracy',
+            'r2interp.insufficient': 'Insufficient accuracy',
+            'r2interp.nonfunctional': 'Model is not functioning',
+        },
+    };
+
+    const LANG_STORAGE_KEY = 'treg_lang';
+
+    function detectDefaultLang() {
+        try {
+            return (navigator.language || 'ja').toLowerCase().startsWith('ja') ? 'ja' : 'en';
+        } catch (_) { return 'ja'; }
+    }
+    function getLang() {
+        try {
+            const saved = localStorage.getItem(LANG_STORAGE_KEY);
+            if (saved === 'ja' || saved === 'en') return saved;
+        } catch (_) { /* file://等でlocalStorageにアクセスできない環境向けフォールバック */ }
+        return detectDefaultLang();
+    }
+    let _lang = getLang();
+
+    // key未訳(enに抜けあり等)→ja→キー名そのもの、の3段フォールバック(サイレント縮退。
+    // 画面が壊れることはなく、未翻訳分だけ日本語のまま表示される)。
+    function t(key, params) {
+        const dict = I18N[_lang] || I18N.ja;
+        let s = dict[key] ?? I18N.ja[key] ?? key;
+        if (params) {
+            for (const k in params) {
+                let v = params[k];
+                if (Array.isArray(v)) v = v.join(t('common.listSep'));
+                s = s.split(`{{${k}}}`).join(v);
+            }
+        }
+        return s;
+    }
+
+    function applyStaticI18n() {
+        document.querySelectorAll('[data-i18n]').forEach(el => {
+            const key = el.getAttribute('data-i18n');
+            if (key === 'ui.settingsInfoBody') el.innerHTML = t(key);
+            else el.textContent = t(key);
+        });
+        document.querySelectorAll('[data-i18n-title]').forEach(el => {
+            el.title = t(el.getAttribute('data-i18n-title'));
+        });
+        document.documentElement.lang = _lang;
+    }
+
+    // 直前に翻訳した進捗ラベル/エラー内容のキー+paramsを保持し、言語切替時に
+    // その場で再翻訳する(それ以外の過去メッセージは遡って翻訳し直さない、#9参照)。
+    let _lastProgressParsed = null;
+    let _lastErrorParsed = null;
+
+    function setLang(lang) {
+        _lang = (lang === 'en') ? 'en' : 'ja';
+        try { localStorage.setItem(LANG_STORAGE_KEY, _lang); } catch (_) {}
+        applyStaticI18n();
+        const langSelect = document.getElementById('langSelect');
+        if (langSelect) langSelect.value = _lang;
+        if (_lastProgressParsed) {
+            const sbLabelEl = document.getElementById('sbLabel');
+            if (sbLabelEl) sbLabelEl.textContent = t('progress.' + _lastProgressParsed.key, _lastProgressParsed.params);
+        }
+        if (_lastErrorParsed) {
+            const errorMsgEl = document.getElementById('errorMsg');
+            if (errorMsgEl) errorMsgEl.innerText = t('error.' + _lastErrorParsed.key, _lastErrorParsed.params);
+        }
+    }
+
     // ── 実行媒体 抽象化レイヤー (Platform) ──────────────────────────────────────────
     // このHTMLは exe版(Tauri)・Web版(HTTP/オフライン)の共通フロントエンドである。
     // バックエンド呼び出し(Tauri invoke/event ↔ Pyodide直接呼び出し)だけを Platform 越しに
@@ -957,7 +1404,10 @@
         let engine = null;
         async function getEngine() {
             if (engine) return engine;
-            engine = window.TregEngine || await import('./treg-engine.js');
+            // オフライン版(window.TregEngine)はメインスレッド実行を維持(file://の制約でWorker化不可)。
+            // HTTP配信版は Web Worker 経由で動かし、学習/予測中もメインスレッドをブロックしない
+            // (旧: import('./treg-engine.js') を直接メインスレッドで実行していた)。
+            engine = window.TregEngine || await import('./treg-worker-client.js');
             return engine;
         }
 
@@ -1034,7 +1484,7 @@
                 return _predictTemplateCache;
             }
             const res = await fetch('./predict_template.html');
-            if (!res.ok) throw new Error('predict_template.html の取得に失敗しました(HTTP ' + res.status + ')');
+            if (!res.ok) throw new Error(t('error.predictTemplateFetchFailed', { status: res.status }));
             _predictTemplateCache = await res.text();
             return _predictTemplateCache;
         }
@@ -1060,15 +1510,17 @@
             async warmup({ onStatus }) {
                 const eng = await getEngine();
                 // 実際の起動ステージ数に応じて疑似パーセンテージを刻む(サーバー版と同じ演出)。
-                const stages = ['エンジンを起動中', '計算ライブラリを読込中', 'モデルコードを展開中', '準備完了'];
+                // onStatusはtreg-engine.js/offline-engine.js側から「表示用文字列」ではなく
+                // 「ステージキー」で通知される(翻訳とstartsWith前方一致の結合を切るため)。
+                const STAGES = ['boot', 'libs', 'extract', 'ready'];
                 await eng.initEngine({
-                    onStatus: (msg) => {
-                        const idx = stages.findIndex(s => msg.startsWith(s));
-                        const pct = idx >= 0 ? Math.round(((idx + 1) / stages.length) * 95) : null;
-                        onStatus(msg, pct);
+                    onStatus: (stageKey) => {
+                        const idx = STAGES.indexOf(stageKey);
+                        const pct = idx >= 0 ? Math.round(((idx + 1) / STAGES.length) * 95) : null;
+                        onStatus(t('startup.' + stageKey), pct);
                     }
                 });
-                onStatus('READY', 100);
+                onStatus(t('status.ready'), 100);
             },
 
             async openCsvDialog() {
@@ -1114,11 +1566,11 @@
             // 置き換えて書き出す。HTMLファイルはWindowsの「安全でない実行ファイル」判定
             // (MOTW/SmartScreen)の対象外のため、未署名でも警告なしで開ける。
             async exportModel({ fileStem }) {
-                if (!_lastTreg) throw new Error('モデルデータが見つかりません。再学習してください。');
+                if (!_lastTreg) throw new Error(t('error.modelDataNotFound'));
                 const treg = _lastTreg instanceof Uint8Array ? _lastTreg : new Uint8Array(_lastTreg);
                 const treg64 = bytesToBase64(treg);
                 const tmpl = await getPredictTemplateText();
-                if (!tmpl.includes('__TREG_BASE64__')) throw new Error('predict_template.html の形式が想定と異なります(プレースホルダ不在)');
+                if (!tmpl.includes('__TREG_BASE64__')) throw new Error(t('error.predictTemplateFormatInvalid'));
                 const label = 'T-regressor Web版 / ' + fileStem + ' / ' + new Date().toISOString();
                 const out = tmpl.replace('__TREG_BASE64__', treg64).replace('__EXPORT_LABEL__', label);
                 const name = fileStem + '.html';
@@ -1227,7 +1679,7 @@
     function _hideStartup() {
         if (_startupDone) return;
         _startupDone = true;
-        _setStartup('READY', 100);
+        _setStartup(t('status.ready'), 100);
         setTimeout(() => {
             const ov = document.getElementById('startupOverlay');
             if (!ov) return;
@@ -1238,9 +1690,9 @@
     if (IS_TAURI) {
         // exe版: 実体はほぼ一瞬で起動するため、体感用の疑似シーケンスを見せてから閉じる。
         // (Python未展開の初回起動時は wireStartupExtraction() が本物の進捗に差し替える)
-        setTimeout(() => _setStartup('リソース確認...', 35), 250);
-        setTimeout(() => _setStartup('前回モデルをスキャン...', 65), 600);
-        setTimeout(() => _setStartup('UI 初期化...', 85), 950);
+        setTimeout(() => _setStartup(t('startup.resourceCheck'), 35), 250);
+        setTimeout(() => _setStartup(t('startup.scanModel'), 65), 600);
+        setTimeout(() => _setStartup(t('startup.uiInit'), 85), 950);
         _hideTimer = setTimeout(_hideStartup, 1350);
     } else {
         // Web版: Pyodide(WASM)の実読込には数秒〜十数秒かかるため、実際の進捗を表示する。
@@ -1276,7 +1728,7 @@
                 _hideStartup();
             } catch (e) {
                 const s = document.getElementById('suStatus');
-                if (s) { s.textContent = '起動に失敗しました: ' + (e.message || e); s.style.color = '#f87171'; }
+                if (s) { s.textContent = t('startup.failed', { detail: e.message || e }); s.style.color = '#f87171'; }
                 // 低-2: 以前は失敗した時点で詰み(リロードするしか復旧手段が無いのに
                 // その手段が画面に無い)だった。再試行ボタンを出し、単純にページを
                 // 再読み込みして起動シーケンスをやり直せるようにする。
@@ -1360,7 +1812,7 @@
         clearStatusResetTimer();
         sbDot.className = 'sb-dot';
         sbDot.style.background = '';
-        sbLabel.className = 'sb-label'; sbLabel.textContent = 'READY';
+        sbLabel.className = 'sb-label'; sbLabel.textContent = t('status.ready');
         sbLabel.style.color = '';
         sbProgressWrap.style.display = 'none';
         sbTimer.style.display = 'none';
@@ -1371,7 +1823,7 @@
         clearStatusResetTimer();
         sbDot.className = 'sb-dot';
         sbDot.style.background = '#f0a94e';
-        sbLabel.className = 'sb-label'; sbLabel.textContent = '✓ DEPLOYED';
+        sbLabel.className = 'sb-label'; sbLabel.textContent = t('status.deployed');
         sbLabel.style.color = '#f0a94e';
         sbProgressWrap.style.display = 'none';
         sbTimer.style.display = 'none';
@@ -1387,7 +1839,7 @@
         trainProgressPct = 0;
         sbDot.className = 'sb-dot active';
         sbDot.style.background = ''; sbLabel.style.color = '';
-        sbLabel.className = 'sb-label active'; sbLabel.textContent = '学習中...';
+        sbLabel.className = 'sb-label active'; sbLabel.textContent = t('status.training');
         sbProgressWrap.style.display = '';
         sbTimer.style.display = '';
         sbProgressBar.style.animation = '';
@@ -1415,29 +1867,29 @@
         if (!lastResult) return;
         const r = lastResult;
 
-        const presetLabel = r.preset === 'thorough' ? 'じっくり' : 'お急ぎ';
+        const presetLabel = r.preset === 'thorough' ? t('detail.presetThorough') : t('detail.presetQuick');
         let evalLabel, evalClass;
         if (r.eval_on === 'oof') {
-            evalLabel = `OOF交差検証 (n=${r.val_rows ?? '?'})`; evalClass = 'oof';
+            evalLabel = t('detail.evalOof', { n: r.val_rows ?? '?' }); evalClass = 'oof';
         } else if (r.eval_on === 'val') {
-            evalLabel = `検証データ (n=${r.val_rows ?? '?'})`; evalClass = 'val';
+            evalLabel = t('detail.evalVal', { n: r.val_rows ?? '?' }); evalClass = 'val';
         } else {
-            evalLabel = '学習データ（ホールドアウトなし）'; evalClass = 'train';
+            evalLabel = t('detail.evalTrain'); evalClass = 'train';
         }
 
         const modelItems = [
-            ['アルゴリズム', esc(r.best_model || '—')],
-            ['学習モード', esc(presetLabel)],
+            [t('detail.algorithm'), esc(r.best_model || '—')],
+            [t('detail.trainMode'), esc(presetLabel)],
         ];
         const accuracyItems = [
             ['RMSE', r.rmse != null ? Number(r.rmse).toFixed(3) : '—'],
             ['MAE',  r.mae  != null ? Number(r.mae).toFixed(3)  : '—'],
         ];
-        if (r.use_gp) accuracyItems.push(['GP形式', esc(r.gp_format || 'pkl')]);
+        if (r.use_gp) accuracyItems.push([t('detail.gpFormat'), esc(r.gp_format || 'pkl')]);
         const dataItems = [
-            ['予測対象列', esc(r.target || '—')],
-            ['学習行数', r.train_rows != null ? r.train_rows.toLocaleString() + ' 行' : '—'],
-            ['検証行数', r.val_rows   != null ? r.val_rows.toLocaleString()   + ' 行' : '—'],
+            [t('detail.targetCol'), esc(r.target || '—')],
+            [t('detail.trainRows'), r.train_rows != null ? t('detail.rowsValue', { n: r.train_rows.toLocaleString() }) : '—'],
+            [t('detail.valRows'),   r.val_rows   != null ? t('detail.rowsValue', { n: r.val_rows.toLocaleString() })   : '—'],
         ];
 
         const section = (label, items) => `
@@ -1453,53 +1905,54 @@
             </div>`;
 
         const hasScatter = r.scatter && Array.isArray(r.scatter.true) && r.scatter.true.length > 0;
-        const scatterEvalNote = r.eval_on === 'oof' ? '交差検証（未学習データ相当）での予測'
-                              : r.eval_on === 'val' ? '検証データでの予測'
-                              : '学習データでの予測';
+        const scatterEvalNote = r.eval_on === 'oof' ? t('detail.scatterNoteOof')
+                              : r.eval_on === 'val' ? t('detail.scatterNoteVal')
+                              : t('detail.scatterNoteTrain');
 
         let html = `
             <div class="detail-hero">
                 <div class="detail-hero-r2">R² ${Number(r.r2 ?? 0).toFixed(3)}</div>
-                <div class="detail-hero-label">${esc(r.r2_interpretation || '')}</div>
+                <div class="detail-hero-label">${esc(t('r2interp.' + r.r2_interpretation))}</div>
                 <span class="eval-badge ${evalClass}" style="margin-top:4px;">${esc(evalLabel)}</span>
             </div>`;
 
         if (hasScatter) {
             html += `
                 <div class="detail-section">
-                    <div class="detail-section-label">予測 vs 実測</div>
+                    <div class="detail-section-label">${t('detail.predVsActual')}</div>
                     <div class="scatter-wrap">
                         <canvas id="scatterCanvas"></canvas>
                     </div>
-                    <div class="scatter-caption">${esc(scatterEvalNote)}・点が対角線に近いほど高精度</div>
+                    <div class="scatter-caption">${esc(scatterEvalNote)}${t('detail.scatterCaptionSuffix')}</div>
                 </div>`;
         }
 
         html += `
-            ${section('モデル', modelItems)}
-            ${section('精度指標', accuracyItems)}
-            ${section('データ', dataItems)}`;
+            ${section(t('detail.model'), modelItems)}
+            ${section(t('detail.accuracy'), accuracyItems)}
+            ${section(t('detail.data'), dataItems)}`;
 
         if (Array.isArray(r.y_range) && r.y_range.length === 2) {
             const fmt = (v) => Number.isInteger(v) ? v.toLocaleString() : Number(v).toFixed(2);
             html += `
                 <div class="detail-section">
-                    <div class="detail-section-label">予測できる範囲</div>
+                    <div class="detail-section-label">${t('detail.predictableRange')}</div>
                     <div class="detail-grid">
                         <div class="detail-item">
-                            <span class="detail-item-label">${esc(r.target || '出力')}</span>
-                            <span class="detail-item-value">${fmt(r.y_range[0])} 〜 ${fmt(r.y_range[1])}</span>
+                            <span class="detail-item-label">${esc(r.target || t('detail.outputLabel'))}</span>
+                            <span class="detail-item-value">${t('detail.rangeSpan', { lo: fmt(r.y_range[0]), hi: fmt(r.y_range[1]) })}</span>
                         </div>
                     </div>
-                    <div class="detail-note">この範囲は学習データの実測値の幅です。予測値はこの範囲内に収まるよう調整され、範囲外への外挿（大きく飛び出した予測）は行いません。</div>
+                    <div class="detail-note">${t('detail.rangeNote')}</div>
                 </div>`;
         }
 
-        if (r.data_warning) {
+        const dwTextDetail = renderDataWarningParts(r.data_warning_parts);
+        if (dwTextDetail) {
             html += `
                 <div class="detail-warning">
                     <span class="detail-warning-icon">!</span>
-                    <span>${esc(r.data_warning)}</span>
+                    <span>${esc(dwTextDetail)}</span>
                 </div>`;
         }
 
@@ -1543,7 +1996,7 @@
             ctx.fillStyle = 'rgba(180,200,225,0.6)';
             ctx.font = '12px system-ui, sans-serif';
             ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-            ctx.fillText('表示できるデータがありません', cssW / 2, cssH / 2);
+            ctx.fillText(t('scatter.noData'), cssW / 2, cssH / 2);
             return;
         }
         if (lo === hi) { lo -= 1; hi += 1; }
@@ -1589,12 +2042,12 @@
         ctx.fillStyle = 'rgba(180,200,225,0.9)';
         ctx.font = '11px system-ui, sans-serif';
         ctx.textAlign = 'center'; ctx.textBaseline = 'bottom';
-        ctx.fillText('実測値', pad.l + plotW / 2, cssH - 2);
+        ctx.fillText(t('scatter.trueAxis'), pad.l + plotW / 2, cssH - 2);
         ctx.save();
         ctx.translate(11, pad.t + plotH / 2);
         ctx.rotate(-Math.PI / 2);
         ctx.textBaseline = 'top';
-        ctx.fillText('予測値', 0, 0);
+        ctx.fillText(t('scatter.predAxis'), 0, 0);
         ctx.restore();
     }
 
@@ -1617,8 +2070,14 @@
     if (!IS_TAURI) {
         // Web版は WASM 単一スレッドで実行するため CPU並列数は意味を持たない → 無効化して明示する
         const numJobsInput = document.getElementById('cpuNumJobsInput');
-        if (numJobsInput) { numJobsInput.disabled = true; numJobsInput.title = 'ブラウザ版では無効です（シングルスレッド実行）'; }
+        if (numJobsInput) { numJobsInput.disabled = true; numJobsInput.title = t('ui.settingsCpuJobsDisabledTitle'); }
     }
+
+    // ── 言語切替 ─────────────────────────────────────────────────────────────
+    applyStaticI18n();
+    const langSelect = document.getElementById('langSelect');
+    langSelect.value = _lang;
+    langSelect.addEventListener('change', () => setLang(langSelect.value));
 
     // ── ヘルパー ─────────────────────────────────────────────────────────────
     function setPredictSub(text) { predictSubLabel.textContent = text; }
@@ -1770,20 +2229,28 @@
         });
     }
 
+    // RESULT_JSONのdata_warning_parts(キー+paramsの配列)を表示言語へ翻訳して結合する。
+    // 既存のdata_warning(日本語全文フィールド)は既存テストが直接依存しているため
+    // 変更していない。表示はこちらの構造化フィールドを優先して使う。
+    function renderDataWarningParts(parts) {
+        if (!Array.isArray(parts) || parts.length === 0) return '';
+        return parts.map(p => t('warning.' + p.key, p.params)).join(' ');
+    }
+
     function applyTrainingResult(result) {
         lastResult = result;
         applyR2Coloring(result.r2 ?? 0);
-        document.getElementById('r2Interpretation').textContent = result.r2_interpretation || '';
+        document.getElementById('r2Interpretation').textContent = result.r2_interpretation ? t('r2interp.' + result.r2_interpretation) : '';
 
         const evalBadge = document.getElementById('evalBadge');
         if (result.eval_on === 'val') {
-            evalBadge.textContent = `VALIDATION (n=${result.val_rows ?? '?'})`;
+            evalBadge.textContent = t('ui.evalBadgeVal', { n: result.val_rows ?? '?' });
             evalBadge.className = 'eval-badge val';
         } else if (result.eval_on === 'oof') {
-            evalBadge.textContent = `OOF K-FOLD (n=${result.val_rows ?? '?'})`;
+            evalBadge.textContent = t('ui.evalBadgeOof', { n: result.val_rows ?? '?' });
             evalBadge.className = 'eval-badge oof';
         } else {
-            evalBadge.textContent = 'TRAIN (no holdout)';
+            evalBadge.textContent = t('ui.evalBadgeTrain');
             evalBadge.className = 'eval-badge train';
         }
 
@@ -1794,9 +2261,10 @@
         // 唯一「使えない」のはカーディナリティが行数に対して高すぎて除外された列
         // (cat_dropped_columns)なので、これのみ警告する。
         const warnParts = [];
-        if (result.data_warning) warnParts.push(result.data_warning);
+        const dwText = renderDataWarningParts(result.data_warning_parts);
+        if (dwText) warnParts.push(dwText);
         if (Array.isArray(result.cat_dropped_columns) && result.cat_dropped_columns.length > 0) {
-            warnParts.push(`⚠ カーディナリティが行数に対して高すぎるため除外した列: 「${result.cat_dropped_columns.join('、')}」。この列は学習・配布ファイルとも一切使われません。`);
+            warnParts.push(t('warning.catDroppedFull', { cols: result.cat_dropped_columns }));
         }
         if (warnParts.length > 0) { warnEl.textContent = warnParts.join(' '); warnEl.style.display = ''; }
         else { warnEl.style.display = 'none'; }
@@ -1804,8 +2272,8 @@
         // RMSE / MAE を R² 下に常時表示
         const r2SubEl = document.getElementById('r2Sub');
         if (r2SubEl) {
-            const rmseStr = result.rmse != null ? `RMSE ${result.rmse.toFixed(3)}` : null;
-            const maeStr  = result.mae  != null ? `MAE ${result.mae.toFixed(3)}`   : null;
+            const rmseStr = result.rmse != null ? t('ui.rmseLabel', { v: result.rmse.toFixed(3) }) : null;
+            const maeStr  = result.mae  != null ? t('ui.maeLabel', { v: result.mae.toFixed(3) })   : null;
             const subParts = [rmseStr, maeStr].filter(Boolean);
             if (subParts.length > 0) { r2SubEl.textContent = subParts.join('  ·  '); r2SubEl.style.display = ''; }
             else { r2SubEl.style.display = 'none'; }
@@ -1849,12 +2317,12 @@
         if (deployBlocked) {
             // R² < 0: 平均値以下の予測力 → PREDICT/DEPLOY をブロック
             predictZone.className = 'drop-zone drop-predict-blocked';
-            setPredictSub('R²<0: 予測精度不足');
+            setPredictSub(t('ui.r2Below0'));
             exportBtn.disabled = true; exportBtn.className = 'btn';
-            deployNote.textContent = '精度不足のためデプロイ不可'; deployNote.className = 'deploy-note'; deployNote.style.color = '#f87171';
+            deployNote.textContent = t('ui.deployBlockedNote'); deployNote.className = 'deploy-note'; deployNote.style.color = '#f87171';
         } else {
             predictZone.className = 'drop-zone drop-predict-ready action-pulse';
-            setPredictSub('↓ CSV をドロップ / クリック');
+            setPredictSub(t('ui.predictReadyHint'));
             // 学習完了直後は PREDICT のみパルス。DEPLOY は静的 ready 状態にとどめる
             exportBtn.disabled = !canDeploy(); exportBtn.className = canDeploy() ? 'btn btn-deploy-ready' : 'btn';
             // 画面に表示中のモデル(best_model)と、実際に配布ファイルへ書き出されるモデルが
@@ -1864,12 +2332,12 @@
                 // 配布可能なモデルが無いのに DEPLOY ボタンだけ有効なままだと、押下時に
                 // 汎用エラーになってしまう(低-6)ため、ここで確実に無効化に戻す。
                 exportBtn.disabled = true; exportBtn.className = 'btn';
-                deployNote.textContent = '⚠ 配布可能なモデルがありません';
+                deployNote.textContent = t('ui.noExportableModel');
                 deployNote.className = 'deploy-note active';
                 deployNote.style.color = '#f87171';
             } else if (result.deploy_substituted) {
                 const r2Str = result.deployed_r2 != null ? result.deployed_r2.toFixed(4) : '?';
-                deployNote.textContent = `配布用モデルは ${result.deployed_model}(R²=${r2Str})を使用`;
+                deployNote.textContent = t('ui.deploySubstitutedNote', { model: result.deployed_model, r2: r2Str });
                 deployNote.className = 'deploy-note active';
                 deployNote.style.color = '#f0a94e';
             } else {
@@ -1895,14 +2363,14 @@
         trainBtn.disabled = true; trainBtn.className = 'btn'; trainBtn.style.display = '';
         cancelBtn.style.display = 'none';
         predictZone.className = 'drop-zone drop-zone-disabled';
-        setPredictSub('学習後に使えます');
+        setPredictSub(t('ui.predictSubLabelInitial'));
         exportBtn.disabled = true; exportBtn.className = 'btn';
         deployNote.textContent = ''; deployNote.className = 'deploy-note'; deployNote.style.color = '';
         inputNote.style.display = 'none'; inputNote.textContent = '';
         trainNote.style.display = 'none'; trainNote.textContent = '';
         clearPredictError(); closeDetailPopup(); dismissWarnBanner();
         switchDashboard('initial');
-        setRobot(gifOk, '学習データを左の枠にドロップしてね。', 'rgba(63,196,236,0.45)', true);
+        setRobot(gifOk, t('robot.dropHint'), 'rgba(63,196,236,0.45)', true);
     }
 
     function showTargetSelector(headers) {
@@ -1922,7 +2390,7 @@
                     trainBtn.disabled = false;
                     trainBtn.className = 'btn btn-train-ready action-pulse';
                     setRobot(gifOk,
-                        `「${selectedTarget}」を予測するよ。\nTRAINボタンで学習スタート！`,
+                        t('robot.targetChosen', { col: selectedTarget }),
                         'rgba(79,127,224,0.55)', false);
                 }, 150);
             });
@@ -1933,7 +2401,7 @@
     }
 
     // 初期化（起動時は前回結果を復元せず、必ず①CSVドロップから始める）
-    setRobot(gifOk, '学習データを左の枠にドロップしてね。', 'rgba(63,196,236,0.45)');
+    setRobot(gifOk, t('robot.dropHint'), 'rgba(63,196,236,0.45)');
     sampleCsvBtn.style.display = '';  // 初期は表示
 
     // ── サンプルCSVボタン ──────────────────────────────────────────────────────
@@ -1941,34 +2409,34 @@
         if (Platform.capabilities.sampleFlow === 'direct') {
             // Web版: 保存ダイアログを挟まず、そのまま①の学習フローに読み込む。
             sampleCsvBtn.disabled = true;
-            sampleCsvBtn.textContent = '読込中...';
+            sampleCsvBtn.textContent = t('ui.sampleCsvLoading');
             try {
                 const fileRef = await Platform.getSampleCsvFileRef();
                 sampleCsvBtn.disabled = false;
-                sampleCsvBtn.textContent = 'サンプルCSVを入手';
+                sampleCsvBtn.textContent = t('ui.sampleCsvBtn');
                 await handleTrainDrop(fileRef);
             } catch (e) {
                 sampleCsvBtn.disabled = false;
-                sampleCsvBtn.textContent = 'サンプルCSVを入手';
-                setBubble(`サンプルCSVの読込に失敗した: ${e}`, true);
+                sampleCsvBtn.textContent = t('ui.sampleCsvBtn');
+                setBubble(t('robot.sampleLoadFailed', { detail: e }), true);
             }
             return;
         }
         sampleCsvBtn.disabled = true;
-        sampleCsvBtn.textContent = '保存中...';
+        sampleCsvBtn.textContent = t('ui.sampleCsvSaving');
         try {
             const path = await Platform.saveSampleCsvNative();
             sampleCsvBtn.disabled = false;
             if (path === null) {                      // ユーザーがダイアログをキャンセル
-                sampleCsvBtn.textContent = 'サンプルCSVを入手';
+                sampleCsvBtn.textContent = t('ui.sampleCsvBtn');
                 return;
             }
-            sampleCsvBtn.textContent = '✓ 保存済み';
-            setBubble('サンプルCSVを保存したよ！\nドロップして試してみてね。', false);
+            sampleCsvBtn.textContent = t('ui.sampleCsvSavedCheckmark');
+            setBubble(t('robot.sampleSaved'), false);
         } catch (e) {
             sampleCsvBtn.disabled = false;
-            sampleCsvBtn.textContent = 'サンプルCSVを入手';
-            setBubble(`サンプルCSVの保存に失敗した: ${e}`, true);
+            sampleCsvBtn.textContent = t('ui.sampleCsvBtn');
+            setBubble(t('robot.sampleSaveFailed', { detail: e }), true);
         }
     });
 
@@ -1983,24 +2451,24 @@
         onDropTrain: async (fileRef) => {
             if (isBusy) {
                 setBubble(isBusy === 'training' ?
-                    '学習中だよ。終わるまで待つか、CANCELしてね。' :
-                    '予測の実行中だよ。終わるまで待ってね。', false);
+                    t('robot.busyTraining') :
+                    t('robot.busyPredicting'), false);
                 return;
             }
             await handleTrainDrop(fileRef);
         },
         onDropPredict: (fileRef) => {
             if (isBusy) {
-                setBubble('学習中だよ。終わるまで待つか、CANCELしてね。', false);
+                setBubble(t('robot.busyTraining'), false);
                 return;
             }
             handlePredictDrop(fileRef);
         },
         // 低-12: CSV以外のファイルがドロップされた時のフィードバック(Tauri/Web共通)。
-        onNonCsvDrop: () => { setBubble('CSVファイルだけ読めるよ。', false); },
+        onNonCsvDrop: () => { setBubble(t('robot.nonCsvDrop'), false); },
         // Phase9: どちらのゾーンにも当たらなかったドロップを無言で無視すると、
         // ユーザーが「ツールが壊れている」と区別できないため一言フィードバックする(Tauri専用)。
-        onDropMiss: () => { setBubble('枠の上に落としてね。', false); },
+        onDropMiss: () => { setBubble(t('robot.dropMiss'), false); },
     });
 
     async function handleTrainDrop(fileRef) {
@@ -2011,7 +2479,7 @@
         topDropZone.className = 'drop-zone';
         trainBtn.disabled = true; trainBtn.className = 'btn';
         predictZone.className = 'drop-zone drop-zone-disabled';
-        setPredictSub('学習後に使えます');
+        setPredictSub(t('ui.predictSubLabelInitial'));
         predictFileName.innerText = '';
         exportBtn.disabled = true; exportBtn.className = 'btn';
         // 前回学習が export_available=false だった場合の「⚠配布可能なモデルがありません」等の
@@ -2023,12 +2491,12 @@
             trainCsvPath = null;
             subFileName.innerText = '';
             topDropZone.className = 'drop-zone action-pulse';
-            setRobotError('CSVの列名を読み取れなかった。\nファイルの1行目にヘッダがあるか確認してね。');
+            setRobotError(t('robot.headerReadFail'));
             return;
         }
-        setRobot(gifOk, `${csvHeaders.length}列を読み込んだよ。\n予測したい列を選んでね。`, 'rgba(79,127,224,0.55)', false);
+        setRobot(gifOk, t('robot.headersLoaded', { n: csvHeaders.length }), 'rgba(79,127,224,0.55)', false);
         trainNote.style.display = 'none'; trainNote.textContent = '';
-        inputNote.textContent = '✓ 読込完了'; inputNote.style.color = '#2fd68e'; inputNote.style.display = '';
+        inputNote.textContent = t('ui.inputNoteLoaded'); inputNote.style.color = '#2fd68e'; inputNote.style.display = '';
         showTargetSelector(csvHeaders);
         clearTimeout(inputNoteTimer);
         inputNoteTimer = setTimeout(() => { inputNote.style.display = 'none'; }, 3000);
@@ -2045,13 +2513,13 @@
         clearPredictError();
         clearStatusResetTimer();
         sbDot.className = 'sb-dot warn';
-        sbLabel.className = 'sb-label active'; sbLabel.textContent = '推論実行中...';
+        sbLabel.className = 'sb-label active'; sbLabel.textContent = t('status.predicting');
         sbProgressWrap.style.display = ''; sbTimer.style.display = 'none';
         sbProgressBar.style.width = '';
         sbProgressBar.style.animation = 'sbIndeterminate 1.5s infinite ease-in-out';
         setRobot(gifTraining,
-            IS_TAURI ? '予測中... ちょっと待ってね。'
-                     : '予測中... ちょっと待ってね。\n(ブラウザが一時的に反応しなくなることがあるよ)',
+            IS_TAURI ? t('robot.predictingTauri')
+                     : t('robot.predictingWeb'),
             'rgba(47,214,142,0.6)', false);
         function onFail(e) {
             isBusy = null;
@@ -2062,9 +2530,9 @@
             document.getElementById('predictErrorBanner').style.display = '';
             switchDashboard('trained');
             predictZone.className = 'drop-zone drop-predict-retry action-pulse';
-            setPredictSub('↩ 再試行: CSVをドロップ');
+            setPredictSub(t('ui.predictRetryHint'));
             if (canDeploy()) { exportBtn.disabled = false; exportBtn.className = 'btn btn-deploy-ready'; }
-            setRobotError(`予測でエラーが起きた。\nCSVをもう一度ドロップしてみてね。`);
+            setRobotError(t('robot.predictFailed'));
         }
         // Web版はPyodideの予測処理がメインスレッドを同期的に占有するため、直前のsetRobot()が
         // 実際に描画されてからでないと「予測中」表示が一度も見えないままフリーズする(_yieldForPaint参照)。
@@ -2074,6 +2542,36 @@
     }
 
     // ── ② 学習実行 ────────────────────────────────────────────────────────
+    // PROGRESSラベル(train_bridge.py._emit_progress由来、"key" または "key:param1:param2")を
+    // 辞書引きして表示用文字列に変換する。1173行目付近のlgbm_search候補のみ可変パラメータを持つ。
+    const PROGRESS_PARAM_NAMES = { lgbm_search: ['pidx', 'n_cand'] };
+    function translateProgressLabel(rawLabel) {
+        if (!rawLabel) return rawLabel;
+        const [key, ...rest] = rawLabel.split(':');
+        const names = PROGRESS_PARAM_NAMES[key] || [];
+        const params = {};
+        names.forEach((n, i) => { params[n] = rest[i]; });
+        _lastProgressParsed = { key, params };
+        return t('progress.' + key, params);
+    }
+
+    // ERROR:/PREDICT_ERROR:由来のキー付きメッセージ("key:{jsonParams}")を解析する。
+    // lib.rs自前のスコープ外文言等、未知形式は解析できず null を返す(呼び出し元でrawそのまま表示)。
+    function parseKeyedMessage(raw) {
+        let body = String(raw).trim().replace(/^\[Robot\]\s*/, '');
+        if (body.startsWith('PREDICT_ERROR:')) body = body.slice('PREDICT_ERROR:'.length);
+        else if (body.startsWith('ERROR:')) body = body.slice('ERROR:'.length);
+        const m = /^([a-z0-9_]+):(\{[\s\S]*\})$/.exec(body);
+        if (!m) return null;
+        try { return { key: m[1], params: JSON.parse(m[2]) }; } catch (_) { return null; }
+    }
+    function translateBackendMessage(raw) {
+        const parsed = parseKeyedMessage(raw);
+        if (!parsed) return raw;
+        _lastErrorParsed = parsed;
+        return t('error.' + parsed.key, parsed.params);
+    }
+
     function onTrainLog(data) {
         if (data.startsWith('PROGRESS:')) {
             const parts = data.split(':');
@@ -2082,17 +2580,17 @@
             if (!isNaN(pct)) {
                 trainProgressPct = pct;
                 sbProgressBar.style.width = pct + '%';
-                if (label && sbLabel) sbLabel.textContent = label;
+                if (label && sbLabel) sbLabel.textContent = translateProgressLabel(label);
             }
             return;
         }
         const log = data.toLowerCase();
-        if (log.includes('[linear]'))    setRobot(gifTraining, '線形モデルを試してる...', 'rgba(79,127,224,0.6)', false);
-        if (log.includes('[lightgbm]'))  setRobot(gifTraining, 'LightGBMで学習中...', 'rgba(79,127,224,0.6)', false);
-        if (log.includes('[gp] scipy'))  setRobot(gifTraining, 'ガウス過程モデルを試してる...', 'rgba(79,127,224,0.6)', false);
-        if (log.includes('[gp] r²'))     setRobot(gifTraining, 'ガウス過程モデル 完了', 'rgba(79,127,224,0.6)', false);
-        if (log.includes('[mlp]'))       setRobot(gifTraining, 'ニューラルネットを学習中...', 'rgba(79,127,224,0.6)', false);
-        if (log.includes('[treg]'))      setRobot(gifTraining, 'モデルを保存中...', 'rgba(79,127,224,0.6)', false);
+        if (log.includes('[linear]'))    setRobot(gifTraining, t('robot.tryingLinear'), 'rgba(79,127,224,0.6)', false);
+        if (log.includes('[lightgbm]'))  setRobot(gifTraining, t('robot.trainingLgbm'), 'rgba(79,127,224,0.6)', false);
+        if (log.includes('[gp] scipy'))  setRobot(gifTraining, t('robot.tryingGp'), 'rgba(79,127,224,0.6)', false);
+        if (log.includes('[gp] r²'))     setRobot(gifTraining, t('robot.gpDone'), 'rgba(79,127,224,0.6)', false);
+        if (log.includes('[mlp]'))       setRobot(gifTraining, t('robot.trainingMlp'), 'rgba(79,127,224,0.6)', false);
+        if (log.includes('[treg]'))      setRobot(gifTraining, t('robot.savingModel'), 'rgba(79,127,224,0.6)', false);
     }
 
     function onTrainProgress(pct, label) {
@@ -2100,7 +2598,7 @@
             trainProgressPct = pct;
             sbProgressBar.style.width = pct + '%';
         }
-        if (label && sbLabel) sbLabel.textContent = label;
+        if (label && sbLabel) sbLabel.textContent = translateProgressLabel(label);
     }
 
     function onTrainComplete(result) {
@@ -2108,22 +2606,22 @@
         stopTrainTimer();
         trainProgressPct = 100;
         sbProgressBar.style.width = '100%';
-        sbLabel.textContent = '学習完了'; sbDot.className = 'sb-dot';
+        sbLabel.textContent = t('status.trainDone'); sbDot.className = 'sb-dot';
         clearStatusResetTimer();
         statusResetTimer = setTimeout(setStatusReady, 5000);
         cancelBtn.style.display = 'none'; trainBtn.style.display = '';
         trainBtn.disabled = true; trainBtn.className = 'btn';
         inputNote.style.display = 'none'; inputNote.textContent = '';
-        trainNote.textContent = '✓ 学習完了'; trainNote.style.color = '#2fd68e'; trainNote.style.display = '';
+        trainNote.textContent = t('status.trainDoneCheckmark'); trainNote.style.color = '#2fd68e'; trainNote.style.display = '';
         applyTrainingResult(result);
         const r2Done = result.r2 ?? 0;
         if (r2Done < 0) {
             setRobot(gifOk,
-                `R²=${r2Done.toFixed(3)} で精度不足。\nデータ追加か別の列を試してみよう。`,
+                t('robot.trainFailedLow', { r2: r2Done.toFixed(3) }),
                 'rgba(239,68,68,0.5)', false);
         } else {
             setRobot(gifCompleted,
-                `学習完了！ R²=${r2Done.toFixed(3)} 右の枠にCSVをドロップして予測しよう。`,
+                t('robot.trainDoneOk', { r2: r2Done.toFixed(3) }),
                 'rgba(240,169,78,0.55)', true);
         }
     }
@@ -2138,15 +2636,15 @@
         // 固まっていた(再読み込みしないと復旧できない)。
         trainBtn.disabled = false; trainBtn.className = 'btn';
         if (canDeploy()) { exportBtn.disabled = false; exportBtn.className = 'btn btn-deploy-ready'; }
-        document.getElementById('errorMsg').innerText = msg;
+        document.getElementById('errorMsg').innerText = translateBackendMessage(msg);
         switchDashboard('error');
-        setRobotError(`学習でエラーが起きた。\n下のエラー内容を確認してね。`);
+        setRobotError(t('robot.trainErrorGeneric'));
     }
 
     async function startTraining(strategyOverride) {
         if (isBusy) return;
         if (!trainCsvPath) {
-            setBubble('先に①の枠へCSVをドロップしてね。', false);
+            setBubble(t('robot.needCsvFirst'), false);
             return;
         }
         isBusy = 'training';
@@ -2161,8 +2659,8 @@
             parseInt(document.getElementById('cpuNumJobsInput').value) || 4));
         startTrainTimer();
         setRobot(gifTraining,
-            IS_TAURI ? `学習中... しばらく待ってね`
-                     : `学習中... しばらく待ってね(ブラウザが一時的に反応しなくなることがあるよ。\nじっくりモードだと数十秒以上かかる場合も)`,
+            IS_TAURI ? t('robot.trainingTauri')
+                     : t('robot.trainingWeb'),
             'rgba(79,127,224,0.6)', false);
         // Web版(Pyodide/WASM)は学習中メインスレッドを同期的に占有し続けるため、直前の
         // setRobot()による「学習中」表示が一度も画面に描画されないままフリーズし、ロボが
@@ -2194,9 +2692,9 @@
             // 学習は一時フォルダで行われるため、前回のモデル一式は無傷で残っている
             applyTrainingResult(lastResult);
             switchDashboard('trained');
-            setRobot(gifOk, '学習をキャンセルしたよ。前回の結果を表示中。', 'rgba(221,138,60,0.55)', false);
+            setRobot(gifOk, t('robot.trainCancelledWithResult'), 'rgba(221,138,60,0.55)', false);
         } else {
-            setRobot(gifOk, '学習をキャンセルしたよ。', 'rgba(221,138,60,0.55)', false);
+            setRobot(gifOk, t('robot.trainCancelled'), 'rgba(221,138,60,0.55)', false);
         }
     });
 
@@ -2255,10 +2753,10 @@
         setStatusReady();
         // 予測完了: PREDICT パルス停止、DEPLOY にパルスを移す
         predictZone.className = 'drop-zone drop-predict-ready';
-        setPredictSub('↩ 再予測可');
+        setPredictSub(t('ui.predictAgainHint'));
 
         document.getElementById('predictRowsLabel').textContent =
-            `${result.rows}件を予測 → ${result.output_name || ''}`;
+            t('ui.predictRowsLabel', { rows: result.rows, name: result.output_name || '' });
 
         // Web版はブラウザの制約上ファイルへ直接書き込めないため、result._predictedCsvに
         // 予測結果CSVを保持しておき、ユーザーが明示的にボタンを押した時だけダウンロードする
@@ -2297,16 +2795,16 @@
         showTrainedTab('predict');
         if (canDeploy()) { exportBtn.disabled = false; exportBtn.className = 'btn btn-deploy-ready action-pulse'; }
         let doneMsg = result._predictedCsv
-            ? `${result.rows}件を予測した！\n「CSVをDL」ボタンで保存できるよ。`
-            : `${result.rows}件を予測した！\n結果はCSVファイルに保存済み。`;
+            ? t('robot.predictDoneWithDl', { rows: result.rows })
+            : t('robot.predictDoneNoDl', { rows: result.rows });
         // 中-M4: 欠損列の警告は列名が増えると簡単に130字を超え、吹き出しでは「…」に
         // 切り詰められて内容が消えていた。常設バナーへ全文を出し、吹き出しには短い
         // 一言だけ添える。
         if (Array.isArray(result.missing_cols) && result.missing_cols.length > 0) {
-            const shown = result.missing_cols.slice(0, 3).join('、');
-            const more = result.missing_cols.length > 3 ? ' ほか' : '';
-            setWarnBanner('predict', `⚠ 学習時の列「${shown}${more}」が見つからず中央値で補完しました。予測精度が下がる場合があります。`);
-            doneMsg += `\n⚠ 注意事項は下に出してるよ。`;
+            const shown = result.missing_cols.slice(0, 3).join(t('common.listSep'));
+            const more = result.missing_cols.length > 3 ? t('warning.missingColsMore') : '';
+            setWarnBanner('predict', t('warning.missingColsHint', { cols: shown + more }));
+            doneMsg += t('robot.predictDoneWarningHint');
         } else {
             setWarnBanner('predict', null);
         }
@@ -2324,7 +2822,7 @@
                 const nameEl = document.querySelector('.su-app-name');
                 if (nameEl)   nameEl.textContent   = 'FIRST-RUN SETUP';
                 if (bar)    { bar.style.transition = 'width 0.4s ease'; bar.style.width = '2%'; }
-                if (status)   status.textContent   = 'Python 環境を展開中...';
+                if (status)   status.textContent   = t('startup.pythonExtracting');
                 trainBtn.disabled  = true;
                 predictZone.classList.add('drop-zone-disabled');
                 exportBtn.disabled = true;
@@ -2334,18 +2832,18 @@
                 const status = document.getElementById('suStatus');
                 const pct = p.percent || 0;
                 if (bar)    bar.style.width    = pct + '%';
-                if (status) status.textContent = `展開中... ${p.current || 0} / ${p.total || '?'} ファイル`;
+                if (status) status.textContent = t('startup.extractingProgress', { current: p.current || 0, total: p.total || '?' });
             },
             onExtractionComplete: () => {
                 const bar = document.getElementById('suProgressBar');
                 const status = document.getElementById('suStatus');
                 if (bar)    bar.style.width    = '100%';
-                if (status) status.textContent = 'セットアップ完了！';
+                if (status) status.textContent = t('startup.setupComplete');
                 setTimeout(_hideStartup, 800);
             },
             onExtractionError: (msg) => {
                 const status = document.getElementById('suStatus');
-                if (status) { status.textContent = 'エラー: ' + msg; status.style.color = '#f87171'; }
+                if (status) { status.textContent = t('startup.extractError', { detail: msg }); status.style.color = '#f87171'; }
             },
         });
     })();
@@ -2360,7 +2858,7 @@
     exportBtn.addEventListener('click', async () => {
         exportBtn.disabled = true; exportBtn.classList.remove('action-pulse'); exportBtn.className = 'btn';
         sbDot.className = 'sb-dot warn';
-        sbLabel.className = 'sb-label active'; sbLabel.textContent = 'デプロイ中...';
+        sbLabel.className = 'sb-label active'; sbLabel.textContent = t('status.deploying');
         try {
             const now = new Date();
             const ymdhms = now.getFullYear().toString() +
@@ -2384,8 +2882,8 @@
             // 「配布完了」だけでなく、常に何が書き出されたかをここでも明示する。
             const substituted = !!(lastResult && lastResult.deploy_substituted);
             deployNote.textContent = substituted
-                ? `✓ 配布完了(${lastResult.deployed_model} を使用)`
-                : '✓ 配布完了';
+                ? t('ui.deployedNoteSubstituted', { model: lastResult.deployed_model })
+                : t('ui.deployedNote');
             deployNote.className = 'deploy-note active';
             deployNote.style.color = '#f0a94e';
             // 中-M4: 以前はモデル差替・カテゴリ列の注意を吹き出しに全文追記していたため、
@@ -2397,27 +2895,23 @@
                 // 注意: best_model表示名は同じでも(例:「Linear (Ridge)」)、多項式特徴を
                 // 使った設定など「今回学習された条件」次第で配布可否が変わる。
                 // 「このモデル種別は非対応」と断定すると誤解を招くため、条件依存の表現にする。
-                deployWarnParts.push(`※今回の設定では画面表示中の${lastResult.best_model}は書き出せず、` +
-                       `${lastResult.deployed_model}(R²=${r2Str})を代わりに使用しています。`);
+                deployWarnParts.push(t('ui.deploySubstitutedFull', {
+                    shown: lastResult.best_model, used: lastResult.deployed_model, r2: r2Str
+                }));
             }
             // 精度レバー4/.treg v5以降、カテゴリ列は配布ファイルでも使えるため、この
             // デプロイ完了時の念押し警告は「除外された列」(cat_dropped_columns)のみ
             // 対象にする(学習直後のdataWarning見落とし対策)。
             if (Array.isArray(lastResult?.cat_dropped_columns) && lastResult.cat_dropped_columns.length > 0) {
-                deployWarnParts.push(`⚠ カテゴリ列「${lastResult.cat_dropped_columns.join('、')}」はカーディナリティが高すぎるため除外されています(精度低下に注意)。`);
+                deployWarnParts.push(t('warning.catDroppedDeployNote', { cols: lastResult.cat_dropped_columns }));
             }
             setWarnBanner('deploy', deployWarnParts.length > 0 ? deployWarnParts.join('　') : null);
 
             let msg = deployWarnParts.length > 0
-                ? '保存した！注意事項は下に出してるよ。'
+                ? t('robot.deploySavedWithWarning')
                 : (modelStrategySelect.value === 'quick'
-                    ? `モデルを保存した！\nさらに上げたいならじっくりモードへ。`
-                    : `モデルを保存した！`);
-            if (!IS_TAURI) {
-                // 単体HTMLファイルなので、ダブルクリックで開くだけで使える(ネット接続不要)。
-                // 旧exe版で必要だった「ブロック解除」操作はHTML化により不要になった。
-                msg += `\nダブルクリックで開くだけで使えるよ(ネット不要)。`;
-            }
+                    ? t('robot.deploySavedQuickHint')
+                    : t('robot.deploySaved'));
             setRobot(gifCompleted, msg, 'rgba(240,169,78,0.6)', false);
         } catch (e) {
             console.error('デプロイ(保存)失敗:', e);
@@ -2427,7 +2921,7 @@
             // (Web版のPyodide側は通常のErrorを投げるため、e.messageも念のため優先する)。
             const raw = (e && typeof e === 'object' && e.message) ? e.message : e;
             const detail = raw ? `\n(${raw})` : '';
-            setRobotError(`保存でエラーが起きた。\nもう一度試してみてね。${detail}`);
+            setRobotError(t('robot.deploySaveFailed', { detail }));
             if (canDeploy()) { exportBtn.disabled = false; exportBtn.className = 'btn btn-deploy-ready'; }
         }
     });

@@ -109,21 +109,24 @@ def _treg_has_model():
 
   async function initEngine({ onStatus } = {}) {
     if (_ready) return;
-    onStatus?.("エンジンを起動中…");
+    // onStatusは表示用の文字列ではなく「ステージキー」で通知する。呼び出し元
+    // (frontend/index.htmlのwarmup())が翻訳し、進捗%算出のstartsWith前方一致にも
+    // 依存しない(treg-engine.jsと同一のキー4種を使うこと)。
+    onStatus?.("boot");
     // pyodide.js は UMD 版(非ESモジュール)を通常<script>で事前読込済み想定 → window.loadPyodide
     _pyodide = await window.loadPyodide({ indexURL: "./vendor/pyodide/" });
 
-    onStatus?.("計算ライブラリを読込中…（同梱データのみ・通信なし）");
+    onStatus?.("libs");
     await _pyodide.loadPackage(DEPS, { messageCallback: () => {} });
 
-    onStatus?.("モデルコードを展開中…");
+    onStatus?.("extract");
     _pyodide.FS.mkdirTree("/treg");
     for (const [name, text] of Object.entries(EMBED.py)) {
       _pyodide.FS.writeFile(`/treg/${name}`, text);
     }
     await _pyodide.runPythonAsync(BOOTSTRAP_PY);
     _ready = true;
-    onStatus?.("準備完了");
+    onStatus?.("ready");
   }
 
   async function train(csvText, target, strategy, { onLog, onProgress } = {}) {
@@ -143,11 +146,23 @@ def _treg_has_model():
     _pyodide.globals.set("_ARG_STRATEGY", strategy);
 
     try {
+      // train_bridge.py の学習本体は _run_main()(async def)に切り出されており、
+      // Pyodide環境ではLightGBM予選/GP/MLPのfoldループ内でawait _maybe_yield()する
+      // (候補/fold単位でブラウザに制御を返し、ロボアニメーション等の描画機会を作る)。
+      // runpy.run_path(run_name="__main__")のままだと内部の`if __name__=='__main__':
+      // asyncio.run(_run_main())`がWebLoop上でネストしたasyncio.run()を呼んでしまい
+      // NotImplementedErrorになるため、importしてトップレベルawaitで直接呼ぶ必要がある。
       await _pyodide.runPythonAsync(`
-import sys, runpy, os
+import sys, os
 os.chdir("/treg")
+if "/treg" not in sys.path: sys.path.insert(0, "/treg")
 sys.argv = ["train_bridge.py", "/treg/input.csv", _ARG_TARGET, "0", _ARG_STRATEGY, "1"]
-runpy.run_path("/treg/train_bridge.py", run_name="__main__")
+# importはモジュールキャッシュされるため、2回目以降の学習でも sys.modules から強制的に
+# 外して再ロードする(train_bridge.py先頭の_NUM_JOBS計算等、sys.argvに依存するモジュール
+# レベルの初期化コードを毎回のargvで再実行させるため)。
+sys.modules.pop("train_bridge", None)
+import train_bridge
+await train_bridge._run_main()
 `);
     } catch (e) {
       // train_bridge.py が ERROR: を出して sys.exit(1) すると、Pyodide側の例外メッセージは
@@ -182,7 +197,7 @@ runpy.run_path("/treg/train_bridge.py", run_name="__main__")
     let errorLine = null;
     _pyodide.setStdout({ batched: (s) => {
       if (s.startsWith("PREDICT_JSON:")) predJson = s.slice("PREDICT_JSON:".length);
-      else if (s.includes("予測エラー:")) errorLine = s;
+      else if (s.includes("PREDICT_ERROR:")) errorLine = s;
       _emitLine(s, onLog, null);
     }});
     _pyodide.setStderr({ batched: (s) => onLog?.("[err] " + s) });
@@ -195,8 +210,9 @@ sys.argv = ["predict_template.py", "/treg/pred_input.csv"]
 runpy.run_path("/treg/predict_template.py", run_name="__main__")
 `);
     } catch (e) {
-      // predict_template.py が「[Robot] 予測エラー: ...」を出して sys.exit(1) すると、
-      // Pyodide側の例外メッセージは汎用的で原因が分からない(中-6)。
+      // predict_template.py が「[Robot] PREDICT_ERROR:predict_failed:{...}」を出して
+      // sys.exit(1) すると、Pyodide側の例外メッセージは汎用的で原因が分からない(中-6)。
+      // フロント側のparseKeyedMessageが[Robot]/PREDICT_ERROR:を解析してキー+パラメータへ翻訳する。
       if (errorLine) throw new Error(errorLine.replace(/^\[Robot\]\s*/, ""));
       throw e;
     }

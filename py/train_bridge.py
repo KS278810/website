@@ -14,6 +14,7 @@ for _env_key in ("OMP_NUM_THREADS", "OPENBLAS_NUM_THREADS", "MKL_NUM_THREADS", "
 import json
 import shutil
 import math
+import asyncio
 import numpy as np
 import pandas as pd
 from concurrent.futures import ThreadPoolExecutor
@@ -128,11 +129,41 @@ GP_RESTARTS_QUICK    = 1
 
 # ─── ユーティリティ ────────────────────────────────────────────────────────────
 
-def _emit_progress(pct, label):
+def _emit_progress(pct, key, *params):
     """UI 進捗バー用のマイルストーン通知。lib.rs が log_data として素通しし、
-    フロントが `PROGRESS:` prefix を判定してバー幅とサブラベルを更新する。"""
+    フロントが `PROGRESS:` prefix を判定してバー幅とサブラベルを更新する。
+    labelは表示用の日本語文ではなくキー(+可変パラメータ)で送る。フロント側が
+    辞書引きして表示言語に翻訳する。パラメータは現状すべて非負整数(候補No/候補総数)
+    のみ。コロンを含み得る自由文字列(列名や例外メッセージ)は絶対に渡さないこと
+    (ERRORキー化と違いJSONエスケープしていないため)。"""
     pct = int(max(0, min(100, pct)))
+    label = ':'.join([key, *map(str, params)])
     print(f"PROGRESS:{pct}:{label}", flush=True)
+
+
+def _error_exit(key, **params):
+    """ERROR: + キー + JSONパラメータで終了する。`ERROR:`prefix自体は不変のため
+    lib.rs/treg-engine.js/offline-engine.jsのprefix判定は無改修で機能する。
+    列名や例外メッセージなど任意の文字(コロン含む)が混在するパラメータは
+    json.dumpsでエスケープする(改行は\\nの2文字に変換されるため行ベースの
+    プロトコルは壊れない)。"""
+    print(f"ERROR:{key}:{json.dumps(params, ensure_ascii=False)}", flush=True)
+    sys.exit(1)
+
+
+# Pyodide(WASM)上での実行判定。sys.platform=="emscripten" はPyodide公式の標準的な自己判定方法。
+# exe版(embeddable CPython)では常にFalseになる。
+_IS_PYODIDE = (sys.platform == "emscripten")
+
+
+async def _maybe_yield():
+    """Pyodide実行時のみ、ブラウザに一度制御を返す(ロボGIF/進捗描画のための息継ぎ)。
+    Web版はPyodideの学習処理がメインスレッド上で同期的にCPUを占有し続けるため(offline.html。
+    HTTP配信版はWeb Worker化済みで本関数の効果は無いが害もない)、await asyncio.sleep(0)で
+    定期的にJSのイベントループへ制御を返し、候補/fold単位で描画・応答の機会を作る。
+    exe版はCPython(_IS_PYODIDE=False)なので何もしない。"""
+    if _IS_PYODIDE:
+        await asyncio.sleep(0)
 
 
 def _round_half_away(arr):
@@ -428,18 +459,20 @@ def _apply_derived(df, recipe):
 
 
 def _r2_interpretation(r2):
+    """戻り値はキー(フロントのI18N['r2interp.'+key]で表示言語に翻訳される)。
+    テスト・ベンチマークからは参照されていないため直接キー化している。"""
     if r2 >= 0.95:
-        return "非常に高精度"
+        return "very_high"
     elif r2 >= 0.85:
-        return "高精度（実用レベル）"
+        return "high"
     elif r2 >= 0.70:
-        return "実用的な精度"
+        return "practical"
     elif r2 >= 0.50:
-        return "精度はやや低め"
+        return "moderate"
     elif r2 >= 0.0:
-        return "精度不足"
+        return "insufficient"
     else:
-        return "モデルが機能していません"
+        return "nonfunctional"
 
 
 def _clean_model_files(model_dir, keep_type):
@@ -487,8 +520,7 @@ def _resolve_and_validate_target(df, target_column_arg):
     Returns: (df, target_column, n_target_na)。エラーは print + exit(1)。"""
     if target_column_arg:
         if target_column_arg not in df.columns:
-            print(f"ERROR: 指定されたターゲット列「{target_column_arg}」がCSVに存在しません", flush=True)
-            sys.exit(1)
+            _error_exit("target_col_not_found", col=target_column_arg)
         target_column = target_column_arg
         print(f"[Python] ターゲット: 「{target_column}」", flush=True)
     else:
@@ -502,8 +534,7 @@ def _resolve_and_validate_target(df, target_column_arg):
         bad_mask = coerced.isna() & col.notna()
         if bad_mask.any():
             example = str(col[bad_mask].iloc[0])
-            print(f"ERROR: ターゲット列「{target_column}」に数値でない値が含まれています（例: {example}）", flush=True)
-            sys.exit(1)
+            _error_exit("target_col_not_numeric", col=target_column, example=example)
         df = df.copy()
         df[target_column] = coerced
 
@@ -512,8 +543,7 @@ def _resolve_and_validate_target(df, target_column_arg):
         df = df.dropna(subset=[target_column]).reset_index(drop=True)
         print(f"[Python] ターゲット欠損 {n_target_na} 行を除外", flush=True)
     if len(df) == 0:
-        print("ERROR: 目的変数に有効な値がある行がありません", flush=True)
-        sys.exit(1)
+        _error_exit("target_all_na")
     return df, target_column, n_target_na
 
 
@@ -1094,9 +1124,12 @@ def _try_linear(df_train, df_val, target_col, model_dir, y_transform='none', y_p
 # ─── 2. LightGBM ──────────────────────────────────────────────────────────────
 # Returns: (r2, feat_list, 'lgbm', preds, info)
 
-def _try_lgbm(df_train, df_val, target_col, model_dir, use_grid=False, use_oof=False,
+def _try_lgbm_steps(df_train, df_val, target_col, model_dir, use_grid=False, use_oof=False,
               y_transform='none', y_params={}, df_all=None, num_jobs=4, splits=None, prog=None,
               df_all_per_fold=None):
+    """本体はジェネレータ。予選/本戦の1候補評価ごとにyield(値なし)し、_try_lgbm(同期)/
+    _try_lgbm_async(Pyodide向け非同期)が呼び出し方だけを変えて共有する(計算ロジックの複製を避ける)。
+    戻り値は StopIteration.value (関数末尾の return がそのまま伝播する)。"""
     try:
         import lightgbm as lgb
 
@@ -1171,12 +1204,13 @@ def _try_lgbm(df_train, df_val, target_col, model_dir, use_grid=False, use_oof=F
                     if prog is not None:
                         lo, hi = prog
                         _emit_progress(lo + (hi - lo) * 0.8 * pidx / n_cand,
-                                       f"最適なパラメータを探索中 {pidx}/{n_cand}")
+                                       "lgbm_search", pidx, n_cand)
                     oof_p, touched, _ = _run_folds(param_override, range(LGBM_HALVING_FOLDS))
                     r2_p = float(r2_score(df_full[target_col].values[touched], oof_p[touched]))
                     print(f"  予選{pidx}/{len(param_grid)}: R²={r2_p:.4f} "
                           f"(leaves={param_override['num_leaves']}, lr={param_override['learning_rate']})", flush=True)
                     prelim_scores.append(r2_p if np.isfinite(r2_p) else -np.inf)
+                    yield  # 候補1件分の重い計算(_run_folds)が終わった直後の息継ぎポイント
                 top_idx = np.argsort(prelim_scores)[::-1][:LGBM_FINALISTS]
                 param_grid_final = [param_grid[i] for i in top_idx]
                 print(f"[LightGBM] 予選通過 {len(param_grid_final)} 候補 → 全{n_splits}foldで本戦", flush=True)
@@ -1196,6 +1230,7 @@ def _try_lgbm(df_train, df_val, target_col, model_dir, use_grid=False, use_oof=F
                 if oof_r2 > best_param_r2:
                     best_param_r2 = oof_r2
                     best_param_set = (dict(base_params, **param_override), best_iters, oof_preds, oof_r2)
+                yield  # 候補1件分(全fold本戦)の重い計算が終わった直後の息継ぎポイント
 
             params, best_iters, oof_preds, oof_r2 = best_param_set
             print(f"[LightGBM] 最良パラメータ R²={oof_r2:.4f}", flush=True)
@@ -1282,6 +1317,27 @@ def _try_lgbm(df_train, df_val, target_col, model_dir, use_grid=False, use_oof=F
         return None, [], None, None, None
 
 
+def _try_lgbm(*args, **kwargs):
+    """同期版: _try_lgbm_steps を最後まで一気に回すだけの薄いラッパー(exe版が使う)。"""
+    gen = _try_lgbm_steps(*args, **kwargs)
+    try:
+        while True:
+            next(gen)
+    except StopIteration as e:
+        return e.value
+
+
+async def _try_lgbm_async(*args, **kwargs):
+    """非同期版: _try_lgbm_steps を1ステップずつ回し、その都度ブラウザに制御を返す(Pyodide向け)。"""
+    gen = _try_lgbm_steps(*args, **kwargs)
+    try:
+        while True:
+            next(gen)
+            await _maybe_yield()
+    except StopIteration as e:
+        return e.value
+
+
 # ─── 3. Gaussian Process (ARD-RBF) ────────────────────────────────────────────
 # Returns: (r2, feat_list, 'gp', preds, info)
 
@@ -1322,9 +1378,10 @@ def _gp_feature_importance(gp, ls_opt, feat_cols, n_features):
         key=lambda x: x["pct"], reverse=True)[:10]
 
 
-def _try_gp(df_train, df_val, target_col, model_dir, use_grid=False, use_oof=False,
+def _try_gp_steps(df_train, df_val, target_col, model_dir, use_grid=False, use_oof=False,
             y_transform='none', y_params={}, df_all=None, feat_cols_override=None, splits=None,
             df_all_per_fold=None, screen_cols_per_fold=None):
+    """本体はジェネレータ(詳細は _try_lgbm_steps のdocstring参照)。fold単位でyield(値なし)する。"""
     try:
         import pickle
         from _light import StandardScaler, LightGP
@@ -1405,6 +1462,7 @@ def _try_gp(df_train, df_val, target_col, model_dir, use_grid=False, use_oof=Fal
                 if use_grid:
                     fold_r2 = r2_score(dva[target_col].values, preds_local)
                     print(f"  [GP] fold {fold+1}/{n_splits}: R²={fold_r2:.4f}", flush=True)
+                yield  # fold1件分のGP fitが終わった直後の息継ぎポイント
             oof_r2 = float(r2_score(df_full[target_col].values, oof_preds))
             print(f"[GP] OOF R²={oof_r2:.4f}", flush=True)
 
@@ -1457,6 +1515,27 @@ def _try_gp(df_train, df_val, target_col, model_dir, use_grid=False, use_oof=Fal
         return None, [], None, None, None
 
 
+def _try_gp(*args, **kwargs):
+    """同期版の薄いラッパー(exe版が使う)。"""
+    gen = _try_gp_steps(*args, **kwargs)
+    try:
+        while True:
+            next(gen)
+    except StopIteration as e:
+        return e.value
+
+
+async def _try_gp_async(*args, **kwargs):
+    """非同期版の薄いラッパー(Pyodide向け)。"""
+    gen = _try_gp_steps(*args, **kwargs)
+    try:
+        while True:
+            next(gen)
+            await _maybe_yield()
+    except StopIteration as e:
+        return e.value
+
+
 # ─── 4. MLP (numpy 自前: forward + Adam) ──────────────────────────────────────
 # Returns: (r2, feat_list, 'mlp', preds, info)
 
@@ -1496,9 +1575,10 @@ def _mlp_feature_importance(pipeline, eval_df, feat_cols, target_col, y_transfor
         key=lambda x: x["pct"], reverse=True)[:10]
 
 
-def _try_mlp(df_train, df_val, target_col, model_dir, use_grid=False, use_oof=False,
+def _try_mlp_steps(df_train, df_val, target_col, model_dir, use_grid=False, use_oof=False,
              y_transform='none', y_params={}, df_all=None, feat_cols_override=None, splits=None,
              df_all_per_fold=None, screen_cols_per_fold=None):
+    """本体はジェネレータ(詳細は _try_lgbm_steps のdocstring参照)。fold単位でyield(値なし)する。"""
     try:
         import pickle
         from _light import StandardScaler, LightMLP, LightPipeline
@@ -1571,6 +1651,7 @@ def _try_mlp(df_train, df_val, target_col, model_dir, use_grid=False, use_oof=Fa
                             _, _, preds_local, _ = _fit_and_eval(dtr, dva, param_spec, feat_cols_local=feat_cols_f)
                             preds_p[va_idx] = preds_local
                             touched[va_idx] = True
+                            yield  # fold1件分のMLP fitが終わった直後の息継ぎポイント(予選)
                         r2_p = float(r2_score(df_full[target_col].values[touched], preds_p[touched]))
                     except Exception:
                         r2_p = -np.inf
@@ -1597,6 +1678,7 @@ def _try_mlp(df_train, df_val, target_col, model_dir, use_grid=False, use_oof=Fa
                     dva = df_fold.iloc[va_idx]
                     _, _, preds_local, _ = _fit_and_eval(dtr, dva, param_spec, feat_cols_local=feat_cols_f)
                     oof_preds[va_idx] = preds_local
+                    yield  # fold1件分のMLP fitが終わった直後の息継ぎポイント(本戦)
                 oof_r2 = float(r2_score(df_full[target_col].values, oof_preds))
                 if use_grid:
                     print(f"  OOF R²={oof_r2:.4f}", flush=True)
@@ -1640,6 +1722,7 @@ def _try_mlp(df_train, df_val, target_col, model_dir, use_grid=False, use_oof=Fa
                 best_hidden = hidden
                 best_preds = preds
                 best_med = med_dict
+            yield  # 候補1件分のMLP fitが終わった直後の息継ぎポイント(非OOF)
 
         if best_pipeline is None:
             return None, [], None, None, None
@@ -1666,6 +1749,27 @@ def _try_mlp(df_train, df_val, target_col, model_dir, use_grid=False, use_oof=Fa
     except Exception as e:
         print(f"[MLP] 失敗: {e}", flush=True)
         return None, [], None, None, None
+
+
+def _try_mlp(*args, **kwargs):
+    """同期版の薄いラッパー(exe版が使う)。"""
+    gen = _try_mlp_steps(*args, **kwargs)
+    try:
+        while True:
+            next(gen)
+    except StopIteration as e:
+        return e.value
+
+
+async def _try_mlp_async(*args, **kwargs):
+    """非同期版の薄いラッパー(Pyodide向け)。"""
+    gen = _try_mlp_steps(*args, **kwargs)
+    try:
+        while True:
+            next(gen)
+            await _maybe_yield()
+    except StopIteration as e:
+        return e.value
 
 
 # ─── 5. LightGBM バギング多様化メンバー（RF / ExtraTrees モード） ──────────────
@@ -2239,12 +2343,15 @@ def _export_treg_blend(model_dir, target_col, candidates, y_transform='none', y_
 
 # ─── main ──────────────────────────────────────────────────────────────────────
 
-if __name__ == '__main__':
+async def _run_main():
+    """学習処理の本体。exe版はCPython上でThreadPoolExecutorによる真の並列で実行し、
+    Pyodide(Web版)は_IS_PYODIDE分岐でモデル毎の非同期版(_try_xxx_async)を順番にawaitすることで、
+    候補/fold単位でブラウザに制御を返す(offline.htmlのロボアニメーション改善)。
+    どちらの経路でも計算ロジック自体(_try_xxx_steps)は共通で、結果は変わらない。"""
     sys.stdout.reconfigure(line_buffering=True, encoding='utf-8')
 
     if len(sys.argv) < 2:
-        print("ERROR: CSVパスが指定されていません", flush=True)
-        sys.exit(1)
+        _error_exit("csv_path_missing")
 
     csv_path      = sys.argv[1]
     target_column = sys.argv[2] if len(sys.argv) > 2 else None
@@ -2253,7 +2360,7 @@ if __name__ == '__main__':
     thorough      = (strategy == 'thorough')
 
     print(f"[Python] CSV を解析中... {csv_path}", flush=True)
-    _emit_progress(3, "CSVを読み込み中")
+    _emit_progress(3, "reading_csv")
     df = _read_csv_with_encoding_fallback(csv_path)
 
     # 低-L3: 列名の前後空白除去(_read_csv_with_encoding_fallback内)後に重複列名が
@@ -2261,8 +2368,7 @@ if __name__ == '__main__':
     # 後続処理全体が不定動作になるため、黙って進めず明示エラーにする。
     dup_col_names = df.columns[df.columns.duplicated()].unique().tolist()
     if dup_col_names:
-        print(f"ERROR: 列名が重複しています（前後空白を除去後）: {dup_col_names}", flush=True)
-        sys.exit(1)
+        _error_exit("duplicate_columns", cols=dup_col_names)
 
     # 中-M7: 完全重複行の検出（削除はしない・警告のみ）。シャッフルKFoldでは同一行が
     # train/val双方に入り得るため、重複が多いデータほどOOF/検証R²が楽観化しやすい。
@@ -2395,7 +2501,7 @@ if __name__ == '__main__':
     df_all_per_fold = None
     screen_cols_per_fold = None
     if use_oof and have_split:
-        _emit_progress(8, "fold毎の特徴量選定を実行中")
+        _emit_progress(8, "fold_feature_select")
         df_all_per_fold = []
         screen_cols_per_fold = []
         for tr_idx, va_idx in cv_splits:
@@ -2421,7 +2527,7 @@ if __name__ == '__main__':
     os.makedirs(model_dir, exist_ok=True)
 
     # 特徴量スクリーニング（最終書き出しモデル用。軽量LGBMで重要度ゼロを除外 → GP/MLPの次元削減）
-    _emit_progress(12, "前処理が完了しました")
+    _emit_progress(12, "preprocess_done")
     screen_cols = _lgbm_feature_screen(df_train, target_column, num_jobs=num_jobs)
 
     # ── モデル訓練 ────────────────────────────────────────────────────────────
@@ -2455,35 +2561,71 @@ if __name__ == '__main__':
                         splits=splits_for_models, df_all_per_fold=df_all_per_fold,
                         screen_cols_per_fold=screen_cols_per_fold)
 
+    # Pyodide(Web版)専用の非同期版。ThreadPoolExecutorはBOOTSTRAP_PYで既に逐次実行に
+    # 差し替わっている(WASMはPythonスレッド不可)ため、元々真の並列性はなかった。
+    # 非同期版を順番にawaitするだけで計算順序・結果は変えず、候補/fold単位でブラウザに
+    # 制御を返せるようにする(offline.htmlのロボアニメーション改善)。
+    async def _run_lgbm_async():
+        return await _try_lgbm_async(df_train, df_val, target_column, model_dir, use_grid=thorough,
+                          use_oof=use_oof, y_transform=y_transform, y_params=y_params,
+                          df_all=df_all_for_models, num_jobs=num_jobs, splits=splits_for_models,
+                          prog=(20, 55) if thorough else None, df_all_per_fold=df_all_per_fold)
+
+    async def _run_gp_async():
+        return await _try_gp_async(df_train, df_val, target_column, model_dir, use_grid=thorough,
+                       use_oof=use_oof, y_transform=y_transform, y_params=y_params,
+                       df_all=df_all_for_models, feat_cols_override=screen_cols,
+                       splits=splits_for_models, df_all_per_fold=df_all_per_fold,
+                       screen_cols_per_fold=screen_cols_per_fold)
+
+    async def _run_mlp_async():
+        if len(df_train) < MLP_MIN_ROWS:
+            return None, [], None, None, None
+        return await _try_mlp_async(df_train, df_val, target_column, model_dir, use_grid=thorough,
+                        use_oof=use_oof, y_transform=y_transform, y_params=y_params,
+                        df_all=df_all_for_models, feat_cols_override=screen_cols,
+                        splits=splits_for_models, df_all_per_fold=df_all_per_fold,
+                        screen_cols_per_fold=screen_cols_per_fold)
+
     if thorough:
         # じっくりモード: LightGBMは予選→本戦で詳細な進捗ログを出すため逐次実行を維持
-        _emit_progress(15, "線形モデルを学習中")
+        _emit_progress(15, "linear_fit")
         lin = _run_linear()
 
-        _emit_progress(20, "LightGBMを学習中")
-        lgb_res = _run_lgbm()
+        _emit_progress(20, "lgbm_fit")
+        lgb_res = await _run_lgbm_async() if _IS_PYODIDE else _run_lgbm()
 
-        _emit_progress(58, "ニューラルネット・ガウス過程を学習中")
-        with _thread_limit(max(1, num_jobs // 2)):
-            with ThreadPoolExecutor(max_workers=2) as ex:
-                fut_gp  = ex.submit(_run_gp)
-                fut_mlp = ex.submit(_run_mlp)
-                gp_res  = fut_gp.result()
-                mlp_res = fut_mlp.result()
+        _emit_progress(58, "mlp_gp_fit")
+        if _IS_PYODIDE:
+            gp_res  = await _run_gp_async()
+            mlp_res = await _run_mlp_async()
+        else:
+            with _thread_limit(max(1, num_jobs // 2)):
+                with ThreadPoolExecutor(max_workers=2) as ex:
+                    fut_gp  = ex.submit(_run_gp)
+                    fut_mlp = ex.submit(_run_mlp)
+                    gp_res  = fut_gp.result()
+                    mlp_res = fut_mlp.result()
     else:
         # お急ぎモード: ハイパラ探索なしの一発勝負×4モデルは互いに独立なので
-        # 全て並列実行して待ち時間（逐次の合計）をなくす。
-        _emit_progress(20, "4種類のモデルを並列学習中")
-        with _thread_limit(max(1, num_jobs // 2)):
-            with ThreadPoolExecutor(max_workers=4) as ex:
-                fut_lin = ex.submit(_run_linear)
-                fut_lgb = ex.submit(_run_lgbm)
-                fut_gp  = ex.submit(_run_gp)
-                fut_mlp = ex.submit(_run_mlp)
-                lin     = fut_lin.result()
-                lgb_res = fut_lgb.result()
-                gp_res  = fut_gp.result()
-                mlp_res = fut_mlp.result()
+        # 全て並列実行して待ち時間（逐次の合計）をなくす(exe版のみ。Pyodideは元々並列不可)。
+        _emit_progress(20, "parallel4_fit")
+        if _IS_PYODIDE:
+            lin     = _run_linear()
+            lgb_res = await _run_lgbm_async()
+            gp_res  = await _run_gp_async()
+            mlp_res = await _run_mlp_async()
+        else:
+            with _thread_limit(max(1, num_jobs // 2)):
+                with ThreadPoolExecutor(max_workers=4) as ex:
+                    fut_lin = ex.submit(_run_linear)
+                    fut_lgb = ex.submit(_run_lgbm)
+                    fut_gp  = ex.submit(_run_gp)
+                    fut_mlp = ex.submit(_run_mlp)
+                    lin     = fut_lin.result()
+                    lgb_res = fut_lgb.result()
+                    gp_res  = fut_gp.result()
+                    mlp_res = fut_mlp.result()
 
     if lin[0] is not None and np.isfinite(lin[0]):
         candidates['Linear (Ridge)'] = lin
@@ -2497,7 +2639,7 @@ if __name__ == '__main__':
     # ── LightGBM バギング多様化メンバー（RF / ExtraTrees モード、thorough のみ） ──
     #    TREG_NO_SKTREE=1 で無効化（去就の実測比較用）。
     if thorough and have_split and df_all_for_models is not None and os.environ.get("TREG_NO_SKTREE") != "1":
-        _emit_progress(78, "追加のモデルを学習中")
+        _emit_progress(78, "extra_models_fit")
         rf_res = _try_sktree('rf', df_train, target_column, model_dir,
                              y_transform=y_transform, y_params=y_params,
                              df_all=df_all_for_models, splits=splits_for_models, num_jobs=num_jobs,
@@ -2513,7 +2655,7 @@ if __name__ == '__main__':
 
     # ── Blend（OOF-NNLS: 重みfitと評価を全行OOFで行う） ───────────────────────
     if thorough and have_split and len(candidates) >= 2:
-        _emit_progress(88, "モデルを組み合わせて最適化中")
+        _emit_progress(88, "ensemble_optimize")
         blend_result = _fit_blend_oof(candidates, df[target_column].values)
         if blend_result is not None:
             blend_r2, blend_names, blend_weights, blend_oof, blend_feats = blend_result
@@ -2539,8 +2681,7 @@ if __name__ == '__main__':
                            "version": 2}, f)
 
     if not candidates:
-        print("ERROR: 有効なモデルが1つも訓練できませんでした", flush=True)
-        sys.exit(1)
+        _error_exit("no_valid_model")
 
     best_name = max(candidates, key=lambda k: candidates[k][0] if np.isfinite(candidates[k][0]) else -np.inf)
 
@@ -2615,29 +2756,42 @@ if __name__ == '__main__':
         json.dump(meta_payload, f, ensure_ascii=False)
 
     # ── データ品質警告 ────────────────────────────────────────────────────────
+    # data_warning(日本語全文)は既存テスト(test_harness.py/run_benchmark.py/
+    # baseline.json)が直接依存しているため1バイトも変更しない。i18n対応は
+    # 新フィールドdata_warning_parts(キー+params)を加算するだけにする。
     n_val = len(df_val) if df_val is not None else 0
     data_warning = None
+    data_warning_parts = []
     if n_rows < MIN_ROWS_FOR_SPLIT:
         data_warning = f"データが {n_rows} 行のため全データで学習。R² は訓練スコアのため楽観的な値です。"
+        data_warning_parts.append({"key": "small_full_data", "params": {"n_rows": n_rows}})
     elif eval_on_str == "oof":
         data_warning = f"OOF (交差検証) で評価。"
         if n_rows < SMALL_N_OOF_THRESH:
             data_warning = f"少ないデータ（{n_rows} 行）— " + data_warning
+            data_warning_parts.append({"key": "oof_eval_small_n", "params": {"n_rows": n_rows}})
+        else:
+            data_warning_parts.append({"key": "oof_eval", "params": {}})
     elif n_val < 20:
         data_warning = f"検証セットが {n_val} 行と少なく R² が不安定な場合があります。100行以上推奨。"
+        data_warning_parts.append({"key": "small_val_set", "params": {"n_val": n_val}})
     if n_target_na > 0:
         tw = f"目的変数が欠損している {n_target_na} 行を学習から除外しました。"
         data_warning = (data_warning + " " + tw) if data_warning else tw
+        data_warning_parts.append({"key": "target_na_excluded", "params": {"n": n_target_na}})
     if n_outliers > 0:
         iqr_mult_used = OUTLIER_IQR_MULT if thorough else OUTLIER_IQR_QUICK
         ow = f"Y 外れ値 {n_outliers} 行を許容範囲内に補正しました（IQR×{iqr_mult_used}）。"
         data_warning = (data_warning + " " + ow) if data_warning else ow
+        data_warning_parts.append({"key": "outliers_corrected", "params": {"n": n_outliers, "iqr_mult": iqr_mult_used}})
     if n_dup_rows > 0:
         dw = f"重複行が{n_dup_rows}件あります。評価が楽観的になる可能性があります。"
         data_warning = (data_warning + " " + dw) if data_warning else dw
+        data_warning_parts.append({"key": "duplicate_rows", "params": {"n": n_dup_rows}})
     if cat_dropped_cols:
         cw = f"カーディナリティが行数に対して高すぎるため除外した列: {', '.join(cat_dropped_cols)}"
         data_warning = (data_warning + " " + cw) if data_warning else cw
+        data_warning_parts.append({"key": "cat_cols_dropped", "params": {"cols": cat_dropped_cols}})
 
     result = {
         "r2":                 r2_report,
@@ -2653,6 +2807,7 @@ if __name__ == '__main__':
         "target":             target_column,
         "preset":             strategy,
         "data_warning":       data_warning,
+        "data_warning_parts": data_warning_parts,
         "r2_interpretation":  _r2_interpretation(r2_report),
         # 低-L6: n<10 では交差検証もできず訓練スコアそのものになるため、R²の数値自体を
         # 信頼できる指標として扱わせないためのフラグ(data_warningのテキストとは別に、
@@ -2704,7 +2859,7 @@ if __name__ == '__main__':
     #    デプロイだけBlendになる、という安全策と矛盾する逆転が起こり得るため、
     #    best_name を必ず先頭にする。
     #    smear はそのデプロイモデル自身の検証予測から再フィットする。
-    _emit_progress(96, "モデルを保存中")
+    _emit_progress(96, "saving_model")
     exportable_candidates = {n: v for n, v in candidates.items()
                              if v[4] is not None and v[4].get("exportable", False)}
     deploy_order = [best_name] + sorted(
@@ -2760,10 +2915,13 @@ if __name__ == '__main__':
             shutil.rmtree(final_model_dir)
         os.replace(model_dir, final_model_dir)
     except Exception as e:
-        print(f"ERROR: 学習結果の配置に失敗しました（他のプロセスが使用中の可能性）: {e}", flush=True)
-        sys.exit(1)
+        _error_exit("result_move_failed", detail=str(e))
 
-    _emit_progress(100, "完了")
+    _emit_progress(100, "done")
     result = _sanitize_json(result)
     print(f"RESULT_JSON:{json.dumps(result, ensure_ascii=False)}", flush=True)
     print("[Python] 学習完了。", flush=True)
+
+
+if __name__ == '__main__':
+    asyncio.run(_run_main())

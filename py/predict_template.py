@@ -430,7 +430,12 @@ if __name__ == '__main__':
             preds_arr = _predict_by_type(model_type, df_model, model_dir, feat_cols,
                                          impute_medians, y_transform, y_params)
     except Exception as e:
-        print(f"[Robot] 予測エラー: {e}", flush=True)
+        # 「予測エラー:」という日本語の部分文字列一致でlib.rs/treg-engine.js/offline-engine.js
+        # がエラーを検知していたが、ASCIIの専用マーカーPREDICT_ERROR:に置き換える
+        # (既存のPREDICT_JSON:命名と整合)。この変更はpredict_template.py + lib.rs +
+        # treg-engine.js + offline-engine.jsの4箇所同時が必須(1箇所でも古いままだと
+        # その経路だけ予測エラーが汎用クラッシュ表示に化ける)。
+        print(f"[Robot] PREDICT_ERROR:predict_failed:{json.dumps({'detail': str(e)}, ensure_ascii=False)}", flush=True)
         sys.exit(1)
 
     # 予測後処理（学習時と同じ smearing補正 / 観測レンジclip / half-away丸め）
