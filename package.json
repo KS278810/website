@@ -1,0 +1,12 @@
+{
+  "name": "t-regressor-web",
+  "private": true,
+  "description": "T-regressor 公開Web版のビルドツール(index.html/offline.html生成・難読化配布物生成)",
+  "scripts": {
+    "build:obfuscated": "node build_obfuscated.mjs"
+  },
+  "devDependencies": {
+    "javascript-obfuscator": "^4.1.0",
+    "terser": "^5.31.0"
+  }
+}

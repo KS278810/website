@@ -1,6 +1,14 @@
 # js_predict_poc/ の数値パリティテスト依存(jsdom)。package.jsonからCIが復元する。
 js_predict_poc/node_modules/
 
+# 難読化配布物のビルドツール依存(package.jsonから復元可能)
+node_modules/
+
+# build_obfuscated.mjs が生成する難読化配布物(ビルド成果物、コミット対象外)。
+# index.html/offline.html はあえて「そのまま読める配布物」として追跡しているため、
+# 難読化版は別物としてこちらに隔離する。
+dist_obfuscated/
+
 # 検証用にビルドしたLinux向けC++参照実装バイナリ(配布物には含めない。手元で
 # g++ -O2 -std=c++17 ../../native_predictor/predict_native_v2.cpp -o predict_native_ref で再生成)
 js_predict_poc/predict_native_ref

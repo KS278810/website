@@ -174,6 +174,33 @@ web/offline.html をエクスプローラーで直接ダブルクリックする
 (`predict_template.html` が無いと「学習済モデルのDL」が失敗する)。
 `vendor/` は約43MBあるため、リポジトリサイズやアップロード時間に注意（Git LFS推奨のケースもある）。
 
+### 利用規約への同意（CC BY-NC 4.0）
+
+Web版のみ、初回アクセス時に利用規約（教育目的は自由・商用利用は要相談）への同意モーダルを表示する
+（`frontend/index.html` の `IS_TAURI` 分岐で制御しており、exe版には出さない）。同意すると
+`localStorage`（キー: `treg_terms_accepted`）にバージョン文字列を記録し、以後は再表示しない。
+文言を変更したら `frontend/index.html` 内の `TERMS_VERSION` を更新すること（既存の同意者にも
+再同意を求められる）。
+
+### 難読化配布物（オプション）
+
+本ソフトウェアは CC BY-NC 4.0（商用利用は要許可）でライセンスされている。通常配布する
+`index.html` / `offline.html` はあえて「そのまま読めるソース」として追跡しているが（前述）、
+カジュアルな無断転用の抑止だけを目的に、難読化版を**別途** `dist_obfuscated/` に生成できる
+（クライアントサイドJSである以上、真の秘匿はできない点に注意）。
+
+```bash
+cd web
+npm install
+npm run build:obfuscated
+```
+
+`build_frontend.mjs`（および `offline.html` を使う場合は `build_offline.mjs`）を先に実行して
+`index.html` / `offline.html` を最新化してから実行すること。生成物は `dist_obfuscated/` にのみ出力され、
+`.gitignore` によりコミット対象外。難読化対象はアプリ本体ロジック（inline `<script>` と
+`treg-engine.js` / `treg-worker.js` / `treg-worker-client.js` / `offline-engine.js`）のみで、
+`vendor/pyodide/`（サードパーティ）・`offline-embed.js`（埋め込みデータ）はそのままコピーする。
+
 ## 動作特性（利用者に伝えるべき点）
 
 - 初回アクセス時にページと同梱の計算ライブラリ(約43〜56MB)を読み込む。外部通信は発生しないため、

@@ -95,6 +95,20 @@
         }
         .settings-gear-btn:hover { color: var(--cyan); border-color: rgba(63,196,236,0.35); background: rgba(63,196,236,0.06); }
 
+        /* ─ 言語トグル(トップ画面常時表示) ─ */
+        .lang-toggle {
+            position: absolute; top: 50%; right: 44px; transform: translateY(-50%);
+            display: flex; border: 1px solid rgba(255,255,255,0.12); border-radius: 6px; overflow: hidden;
+        }
+        .lang-toggle-btn {
+            background: none; border: none; color: var(--ink-dim); font-family: var(--font-display);
+            font-size: 11px; font-weight: 700; letter-spacing: 0.5px; padding: 0 10px; height: 34px;
+            cursor: pointer; transition: all 0.2s;
+        }
+        .lang-toggle-btn + .lang-toggle-btn { border-left: 1px solid rgba(255,255,255,0.12); }
+        .lang-toggle-btn.active { color: var(--cyan); background: rgba(63,196,236,0.1); }
+        .lang-toggle-btn:hover:not(.active) { color: var(--ink); background: rgba(255,255,255,0.04); }
+
         /* ─ 設定オーバーレイ ─ */
         #settingsOverlay {
             position: fixed; inset: 0; background: rgba(0,0,0,0.75);
@@ -130,6 +144,26 @@
         }
         .settings-info-title { font-family: var(--font-display); font-size: 12px; font-weight: 700; letter-spacing: 1.5px; color: var(--gold); margin-bottom: 6px; text-transform: uppercase; }
         .settings-info-body { font-size: 13px; color: #8a9bb0; line-height: 1.75; }
+        .settings-info-body a { color: var(--cyan); }
+
+        /* ─ 利用規約同意パネル ─ */
+        #termsOverlay {
+            position: fixed; inset: 0; background: rgba(0,0,0,0.8);
+            z-index: 200; display: flex; justify-content: center; align-items: center;
+        }
+        #termsPanel {
+            background: #080d18; border: 1px solid rgba(240,169,78,0.3);
+            border-radius: 12px; padding: 24px 28px; width: min(480px, calc(100vw - 48px));
+            max-height: calc(100vh - 48px); overflow-y: auto;
+            box-shadow: 0 25px 80px rgba(0,0,0,0.85);
+        }
+        #termsPanel > p { font-size: 13px; color: #8a9bb0; line-height: 1.7; margin: 0 0 16px; }
+        .terms-agree-row {
+            display: flex; align-items: center; gap: 8px; margin: 20px 0 16px;
+            font-size: 13px; color: var(--ink); cursor: pointer;
+        }
+        #termsAcceptBtn { width: 100%; }
+        #termsAcceptBtn:disabled { opacity: 0.4; cursor: not-allowed; }
         .settings-info-code {
             font-family: var(--font-mono); font-size: 12.5px; color: var(--gold);
             background: rgba(240,169,78,0.12); padding: 2px 7px; border-radius: 3px;
@@ -539,6 +573,10 @@
 </div>
 
 <header>
+    <div class="lang-toggle" role="group" aria-label="Language / 言語">
+        <button type="button" class="lang-toggle-btn" data-lang="ja">日本語</button>
+        <button type="button" class="lang-toggle-btn" data-lang="en">EN</button>
+    </div>
     <img src="assets/logo2.png" class="logo" alt="T-regressor">
     <button id="settingsBtn" class="settings-gear-btn" data-i18n-title="ui.settingsBtnTitle" title="設定"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg></button>
 </header>
@@ -718,13 +756,6 @@
             <button id="settingsCloseBtn" class="settings-close-btn">✕</button>
         </div>
         <div class="settings-row">
-            <div class="settings-label">言語 / LANGUAGE</div>
-            <select id="langSelect" class="settings-select">
-                <option value="ja">日本語</option>
-                <option value="en">English</option>
-            </select>
-        </div>
-        <div class="settings-row">
             <div class="settings-label" data-i18n="ui.settingsModeLabel">モード</div>
             <select id="modelStrategySelect" class="settings-select">
                 <option value="quick" data-i18n="ui.settingsModeQuick" selected>お急ぎ</option>
@@ -742,6 +773,29 @@
             <div class="settings-label" data-i18n="ui.settingsCpuJobsLabel">CPU並列数</div>
             <input id="cpuNumJobsInput" type="number" class="settings-select" value="4" min="1" max="16">
         </div>
+    </div>
+</div>
+
+<!-- ─ 利用規約同意パネル(Web公開版のみ表示) ─ -->
+<div id="termsOverlay" style="display:none;">
+    <div id="termsPanel">
+        <div class="settings-header">
+            <span class="settings-title" data-i18n="terms.title">利用規約に同意してください</span>
+        </div>
+        <p data-i18n="terms.licenseLine">このツールは <b>CC BY-NC 4.0</b>（表示・非営利）でライセンスされています。</p>
+        <div class="settings-info-box">
+            <div class="settings-info-title" data-i18n="terms.eduTitle">✅ 教育目的での利用（自由）</div>
+            <div class="settings-info-body" data-i18n="terms.eduBody">学校・大学での学習・研究、学習教材の作成、個人の学習・研究目的での利用は自由に行えます。</div>
+        </div>
+        <div class="settings-info-box">
+            <div class="settings-info-title" data-i18n="terms.commTitle">❌ 商用利用について（事前許可が必要）</div>
+            <div class="settings-info-body" data-i18n="terms.commBody">SaaS化・API化しての販売・企業研修等での利用は商用利用とみなします。事前に <a href="mailto:kohei.shintani@brainverse.jp">kohei.shintani@brainverse.jp</a> までご相談ください。</div>
+        </div>
+        <label class="terms-agree-row">
+            <input type="checkbox" id="termsAgreeCheckbox">
+            <span data-i18n="terms.agreeLabel">利用規約に同意します</span>
+        </label>
+        <button id="termsAcceptBtn" class="btn" disabled data-i18n="terms.acceptBtn">同意して続行</button>
     </div>
 </div>
 
@@ -936,6 +990,15 @@
             'r2interp.moderate': '精度はやや低め',
             'r2interp.insufficient': '精度不足',
             'r2interp.nonfunctional': 'モデルが機能していません',
+
+            'terms.title': '利用規約に同意してください',
+            'terms.licenseLine': 'このツールは <b>CC BY-NC 4.0</b>（表示・非営利）でライセンスされています。',
+            'terms.eduTitle': '✅ 教育目的での利用（自由）',
+            'terms.eduBody': '学校・大学での学習・研究、学習教材の作成、個人の学習・研究目的での利用は自由に行えます。',
+            'terms.commTitle': '❌ 商用利用について（事前許可が必要）',
+            'terms.commBody': 'SaaS化・API化しての販売・企業研修等での利用は商用利用とみなします。事前に <a href="mailto:kohei.shintani@brainverse.jp">kohei.shintani@brainverse.jp</a> までご相談ください。',
+            'terms.agreeLabel': '利用規約に同意します',
+            'terms.acceptBtn': '同意して続行',
         },
         en: {
             'common.listSep': ', ',
@@ -1119,6 +1182,15 @@
             'r2interp.moderate': 'Somewhat low accuracy',
             'r2interp.insufficient': 'Insufficient accuracy',
             'r2interp.nonfunctional': 'Model is not functioning',
+
+            'terms.title': 'Please agree to the terms of use',
+            'terms.licenseLine': 'This tool is licensed under <b>CC BY-NC 4.0</b> (Attribution-NonCommercial).',
+            'terms.eduTitle': '✅ Educational use (free)',
+            'terms.eduBody': 'Learning and research at schools/universities, creating learning materials, and personal learning/research use are all free.',
+            'terms.commTitle': '❌ Commercial use (permission required)',
+            'terms.commBody': 'Turning this into a paid SaaS, selling it as an API, or using it in corporate training counts as commercial use. Please contact <a href="mailto:kohei.shintani@brainverse.jp">kohei.shintani@brainverse.jp</a> beforehand.',
+            'terms.agreeLabel': 'I agree to the terms of use',
+            'terms.acceptBtn': 'Agree and continue',
         },
     };
 
@@ -1156,7 +1228,8 @@
     function applyStaticI18n() {
         document.querySelectorAll('[data-i18n]').forEach(el => {
             const key = el.getAttribute('data-i18n');
-            if (key === 'ui.settingsInfoBody') el.innerHTML = t(key);
+            const HTML_KEYS = ['ui.settingsInfoBody', 'terms.licenseLine', 'terms.eduBody', 'terms.commBody'];
+            if (HTML_KEYS.includes(key)) el.innerHTML = t(key);
             else el.textContent = t(key);
         });
         document.querySelectorAll('[data-i18n-title]').forEach(el => {
@@ -1174,8 +1247,7 @@
         _lang = (lang === 'en') ? 'en' : 'ja';
         try { localStorage.setItem(LANG_STORAGE_KEY, _lang); } catch (_) {}
         applyStaticI18n();
-        const langSelect = document.getElementById('langSelect');
-        if (langSelect) langSelect.value = _lang;
+        document.querySelectorAll('.lang-toggle-btn').forEach(btn => btn.classList.toggle('active', btn.dataset.lang === _lang));
         if (_lastProgressParsed) {
             const sbLabelEl = document.getElementById('sbLabel');
             if (sbLabelEl) sbLabelEl.textContent = t('progress.' + _lastProgressParsed.key, _lastProgressParsed.params);
@@ -2073,11 +2145,33 @@
         if (numJobsInput) { numJobsInput.disabled = true; numJobsInput.title = t('ui.settingsCpuJobsDisabledTitle'); }
     }
 
-    // ── 言語切替 ─────────────────────────────────────────────────────────────
+    // ── 言語切替(ヘッダー常時表示のトグル) ───────────────────────────────────
     applyStaticI18n();
-    const langSelect = document.getElementById('langSelect');
-    langSelect.value = _lang;
-    langSelect.addEventListener('change', () => setLang(langSelect.value));
+    const langToggleBtns = document.querySelectorAll('.lang-toggle-btn');
+    langToggleBtns.forEach(btn => btn.classList.toggle('active', btn.dataset.lang === _lang));
+    langToggleBtns.forEach(btn => btn.addEventListener('click', () => setLang(btn.dataset.lang)));
+
+    // ── 利用規約同意パネル(Web公開版のみ。exe版はCC BY-NC対象外のため出さない) ──────
+    // TERMS_VERSION を変更すると、過去に同意済みの利用者にも再度同意を求められる。
+    if (!IS_TAURI) {
+        const TERMS_VERSION = '2026-07-17';
+        const TERMS_STORAGE_KEY = 'treg_terms_accepted';
+        const termsOverlay = document.getElementById('termsOverlay');
+        const termsAgreeCheckbox = document.getElementById('termsAgreeCheckbox');
+        const termsAcceptBtn = document.getElementById('termsAcceptBtn');
+        let acceptedVersion = null;
+        try { acceptedVersion = localStorage.getItem(TERMS_STORAGE_KEY); } catch (_) {}
+        if (acceptedVersion !== TERMS_VERSION) {
+            termsOverlay.style.display = 'flex';
+        }
+        termsAgreeCheckbox.addEventListener('change', (e) => {
+            termsAcceptBtn.disabled = !e.target.checked;
+        });
+        termsAcceptBtn.addEventListener('click', () => {
+            try { localStorage.setItem(TERMS_STORAGE_KEY, TERMS_VERSION); } catch (_) {}
+            termsOverlay.style.display = 'none';
+        });
+    }
 
     // ── ヘルパー ─────────────────────────────────────────────────────────────
     function setPredictSub(text) { predictSubLabel.textContent = text; }
