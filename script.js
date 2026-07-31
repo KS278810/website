@@ -64,7 +64,7 @@ document.addEventListener("DOMContentLoaded", () => {
     });
   }
 
-  // 4. Intersection Observer for Fade-In Animations (staggered by DOM order)
+  // 4. Intersection Observer for Fade-In Animations
   const observerOptions = {
     root: null,
     rootMargin: '0px',
@@ -83,29 +83,4 @@ document.addEventListener("DOMContentLoaded", () => {
   document.querySelectorAll('.fade-in').forEach(element => {
     observer.observe(element);
   });
-
-  // 5. Restrained interactive tilt on the hero photo frame (desktop only,
-  // respects prefers-reduced-motion). Adds a quiet, editorial touch without
-  // gimmicky decoration — the frame subtly follows the cursor, no more.
-  const prefersReducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-  const photoFrame = document.querySelector('.photo-frame');
-  const photo = photoFrame ? photoFrame.querySelector('.profile-photo') : null;
-  const canHover = window.matchMedia('(hover: hover) and (pointer: fine)').matches;
-
-  if (photoFrame && photo && !prefersReducedMotion && canHover) {
-    const maxTiltDeg = 5;
-
-    photoFrame.addEventListener('mousemove', (e) => {
-      const rect = photoFrame.getBoundingClientRect();
-      const x = (e.clientX - rect.left) / rect.width - 0.5;
-      const y = (e.clientY - rect.top) / rect.height - 0.5;
-      const rotateY = (-3 + x * maxTiltDeg).toFixed(2);
-      const rotateX = (1.2 - y * maxTiltDeg).toFixed(2);
-      photo.style.transform = `rotateY(${rotateY}deg) rotateX(${rotateX}deg)`;
-    });
-
-    photoFrame.addEventListener('mouseleave', () => {
-      photo.style.transform = '';
-    });
-  }
 });
