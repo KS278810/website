@@ -1,6 +1,7 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
+<<<<<<< HEAD
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Kohei Shintani | AI Researcher &amp; Vehicle Engineer</title>
@@ -359,10 +360,9 @@ h2.sec::after{
 .sec-kicker{font-family:var(--font-ui);font-size:.78rem;letter-spacing:.22em;color:var(--amber-lt);margin:0 0 .9rem;text-transform:uppercase;}
 
 /* ==========================================================================
-   CH.01 Career — 時系列グラフ。モバイルは縦積み、860px以上は横並びにして
-   スクロール量を減らす
+   CH.01 Career — 交互配置タイムライン（奇数上・偶数下）
    ========================================================================== */
-.timeline{list-style:none;margin:2.4rem 0 0;padding:0;position:relative;max-width:44em;}
+.timeline{list-style:none;margin:2.4rem 0 0;padding:0;position:relative;}
 .timeline::before{
   content:"";position:absolute;left:5px;top:8px;bottom:8px;width:1px;
   background:linear-gradient(180deg,var(--amber),var(--azure) 55%,#FF5FA8);
@@ -395,17 +395,34 @@ h2.sec::after{
   50%{box-shadow:0 0 0 7px rgb(90 168 255/0%);}
 }
 
-@media (min-width:860px){
+@media (min-width:900px){
   .timeline{
-    max-width:none;display:grid;grid-template-columns:repeat(5,1fr);gap:1.4rem;
+    max-width:1000px;display:flex;flex-wrap:wrap;gap:2rem;
+    position:relative;align-items:flex-start;
   }
   .timeline::before{
-    left:0;right:0;top:5px;bottom:auto;width:auto;height:1px;
-    background:linear-gradient(90deg,var(--amber),var(--azure) 55%,#FF5FA8);
+    content:"";position:absolute;left:50%;top:0;bottom:0;
+    width:2px;height:100%;background:linear-gradient(180deg,var(--amber),var(--azure) 55%,#FF5FA8);
+    transform:translateX(-50%);
   }
-  .timeline li{padding:2rem .4rem 0;}
-  .timeline li:hover{background:none;transform:translateY(-4px);}
-  .timeline li::before{left:0;top:0;}
+  .timeline li{
+    flex:0 1 calc(50% - 1rem);margin-bottom:2rem;
+    padding:1.4rem;background:var(--card);border:1px solid var(--line);
+    border-radius:8px;
+  }
+  .timeline li:hover{background:rgb(90 168 255/4%);transform:translateY(-6px);}
+  .timeline li:nth-child(odd){
+    margin-right:auto;text-align:right;padding-right:2.2rem;
+  }
+  .timeline li:nth-child(odd)::before{
+    left:auto;right:.4rem;
+  }
+  .timeline li:nth-child(even){
+    margin-left:auto;padding-left:2.2rem;
+  }
+  .timeline li:nth-child(even)::before{
+    left:.4rem;
+  }
 }
 
 /* ==========================================================================
@@ -1685,5 +1702,165 @@ html[data-motion="off"] .scroll-cue{display:none;}
   applyLang(lang);
 })();
 </script>
+=======
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Kohei Shintani | AI Researcher</title>
+  <meta name="description" content="Portfolio of Kohei Shintani, PhD in Information Science. AI Researcher bridging automotive engineering and machine learning.">
+  <!-- Google Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+  <!-- Header -->
+  <header class="header">
+    <div class="container header-container">
+      <h1 class="logo"><a href="index.html">Kohei Shintani</a></h1>
+      <nav class="nav">
+        <a href="index.html" class="active">Home</a>
+        <a href="research.html">Research</a>
+        <a href="hobbies.html">Hobbies</a>
+      </nav>
+      <button class="mobile-menu-btn" aria-label="Toggle menu">
+        <svg viewBox="0 0 24 24" width="24" height="24" stroke="currentColor" stroke-width="2" fill="none">
+          <line x1="3" y1="12" x2="21" y2="12"></line>
+          <line x1="3" y1="6" x2="21" y2="6"></line>
+          <line x1="3" y1="18" x2="21" y2="18"></line>
+        </svg>
+      </button>
+    </div>
+  </header>
+
+  <main>
+    <!-- Hero / About Me -->
+    <section id="about" class="hero section">
+      <div class="container hero-content fade-in">
+
+        <div class="hero-layout">
+          <!-- Photo -->
+          <div class="hero-image-wrap">
+            <img src="figures/KoheiShintani.jpg" alt="Kohei Shintani" class="profile-photo">
+
+            <!-- Titles under photo -->
+            <div class="hero-titles">
+              <span class="hero-job-title">AI Researcher &nbsp;|&nbsp; Vehicle Engineer &nbsp;|&nbsp; Innovation Manager</span>
+            </div>
+
+            <!-- Social Hub Moved Here -->
+            <div class="social-hub vertical-social">
+              <a href="https://www.linkedin.com/in/kohei-shintani-9b20a6175" target="_blank" class="social-btn" aria-label="LinkedIn">
+                <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M16 8a6 6 0 0 1 6 6v7h-4v-7a2 2 0 0 0-2-2 2 2 0 0 0-2 2v7h-4v-7a6 6 0 0 1 6-6z"></path>
+                  <rect x="2" y="9" width="4" height="12"></rect>
+                  <circle cx="4" cy="4" r="2"></circle>
+                </svg>
+                <span>LinkedIn</span>
+              </a>
+              <a href="https://www.researchgate.net/profile/Kohei-Shintani" target="_blank" class="social-btn" aria-label="ResearchGate">
+                <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M12 2a10 10 0 1 0 10 10A10 10 0 0 0 12 2zm0 18a8 8 0 1 1 8-8 8 8 0 0 1-8 8zm1-13h-2v4H9v2h2v4h2v-4h2V9h-2z" />
+                </svg>
+                <span>ResearchGate</span>
+              </a>
+              <a href="https://scholar.google.com/citations?user=eV2PhM4AAAAJ&hl=ja" target="_blank" class="social-btn" aria-label="Google Scholar">
+                <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <circle cx="12" cy="12" r="10"></circle>
+                  <path d="M5.5 17c0-2.5 3-4 6.5-4s6.5 1.5 6.5 4"></path>
+                  <circle cx="12" cy="8" r="3"></circle>
+                </svg>
+                <span>Scholar</span>
+              </a>
+            </div>
+          </div>
+
+          <!-- Bio Text -->
+          <div class="hero-text-wrap">
+            <h2 class="hero-headline">
+                Bridging Automotive Engineering & Machine Learning
+            </h2>
+
+            <div class="bio-container">
+              <p class="bio-text">
+                I am an AI Researcher and PhD in Information Science, bridging physical intelligence and data-driven innovation. My work integrates PDE-based deductive approaches with inductive AI methodologies to create high-performance engineering designs.
+              </p>
+              <p class="bio-text mt-20">
+                With a background as a <strong>Manager at Toyota</strong> and <strong>Visiting Researcher at the University of Tokyo</strong>, I currently drive 3D generative design and AI-driven simulation as a Technical Advisor at <strong>Toyota Research Institute (TRI)</strong>.
+              </p>
+              <p class="bio-text mt-20">
+                I am a strong advocate for <strong>Set-Based Concurrent Engineering</strong>, developing Bayesian Active Learning frameworks that eliminate development re-work by mathematically identifying feasible design regions early in the cycle.
+              </p>
+            </div>
+
+            <!-- Social Hub Removed From Here -->
+
+          </div>
+        </div>
+
+      </div>
+    </section>
+
+    <!-- Awards & Selected Publications -->
+    <section class="section bg-light border-top">
+      <div class="container fade-in">
+        <div class="grid grid-2">
+          <!-- Awards -->
+          <div class="awards-section">
+            <h3 class="subsection-title">Awards & Honors</h3>
+            <ul class="info-list">
+              <li><strong>Technology Development Award</strong>, Society of Automotive Engineers of Japan (JSAE), 2023.</li>
+              <li><strong>ROBOMEC Award</strong>, Japan Society of Mechanical Engineers (JSME), 2023.</li>
+              <li><strong>Silver Medal (Top 1%)</strong>, Kaggle NBME - Score Clinical Patient Notes, 2022.</li>
+              <li><strong>Best Paper Award</strong>, iDECON/MS2021, 2021.</li>
+              <li><strong>Silver Medal (Top 2%)</strong>, Kaggle Mechanisms of Action (MoA) Prediction, 2020.</li>
+              <li><strong>Silver Medal (Top 4%)</strong>, Kaggle Ion Switching, 2020.</li>
+              <li><strong>Best Paper Award</strong>, iDECON/MS2019, 2019.</li>
+              <li><strong>Best Presentation Award</strong>, ACDDE, 2018.</li>
+              <li><strong>Paper of Distinction</strong>, 43rd Design Automation Conference (ASME), 2017.</li>
+              <li><strong>Best Paper Award</strong>, SAE Brake Colloquium & Exhibition, 2015.</li>
+            </ul>
+          </div>
+
+          <!-- Selected Publications -->
+          <div class="publications-section">
+            <h3 class="subsection-title">Selected Publications</h3>
+            <ul class="info-list">
+              <li><strong>VehicleSDF</strong>: A 3D generative model for constrained engineering design, <em>NeurIPS Workshop</em> (2024).</li>
+              <li><strong>WheelSDF</strong>: Implicit Representation-Based 3D Shape Generation and Interpolation, <em>ASME IDETC-CIE</em> (2025).</li>
+              <li>A set-based approach for hierarchical optimization problem using Bayesian active learning, <em>Int. J. Num. Meth. Eng.</em> (2022).</li>
+              <li>Data-driven set based concurrent engineering method for MDO, <em>SAE Technical Paper</em> (2022).</li>
+              <li>Robust topology optimization of multi-material lattice structures, <em>Frontiers of Mech. Eng.</em> (2019).</li>
+            </ul>
+            <a href="research.html" class="btn-link mt-20">View all publications &rarr;</a>
+          </div>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <!-- Footer -->
+  <footer class="footer">
+    <div class="container footer-content fade-in">
+      <div class="footer-info">
+        <h3>Contact</h3>
+        <p>Cambridge, MA / Boston Area</p>
+        <a href="mailto:mailad4me@gmail.com" class="contact-email">mailad4me@gmail.com</a>
+      </div>
+    </div>
+    <div class="copyright">
+      <p>&copy; 2026 Kohei Shintani. All rights reserved.</p>
+    </div>
+  </footer>
+
+  <button id="backToTop" class="back-to-top" aria-label="Back to top">
+    <svg viewBox="0 0 24 24" width="24" height="24" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round">
+      <polyline points="18 15 12 9 6 15"></polyline>
+    </svg>
+  </button>
+
+  <script src="script.js"></script>
+>>>>>>> f2d49522c2ebf0794fe94fc9f6d2e2a496e18537
 </body>
 </html>

@@ -1,0 +1,104 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Hobbies & Insights | Kohei Shintani</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body class="bg-light">
+
+  <!-- Header -->
+  <header class="header">
+    <div class="container header-container">
+      <a href="index.html" class="logo">Kohei Shintani</a>
+      <nav class="nav">
+        <a href="index.html">Home</a>
+        <a href="research.html">Research</a>
+        <a href="hobbies.html" class="active">Hobbies</a>
+      </nav>
+      <button class="mobile-menu-btn" aria-label="Toggle menu">
+        <svg viewBox="0 0 24 24" width="24" height="24" stroke="currentColor" stroke-width="2" fill="none">
+          <line x1="3" y1="12" x2="21" y2="12"></line>
+          <line x1="3" y1="6" x2="21" y2="6"></line>
+          <line x1="3" y1="18" x2="21" y2="18"></line>
+        </svg>
+      </button>
+    </div>
+  </header>
+
+  <main class="page-top-padding">
+    <section class="section">
+      <div class="container fade-in">
+        <h2 class="page-title">Hobbies & Insights</h2>
+        <p class="section-subtitle">Beyond academic research: Exploring Web Development, Data Science Competitions, and Personal Tech Experiments.</p>
+
+        <div class="grid grid-2 hobbies-grid">
+
+          <!-- Blitzboard -->
+          <div class="card insight-card">
+            <div class="insight-thumb" style="background-image: url('figures/showcase1.png');"></div>
+            <div class="insight-content">
+              <h4>Blitzboard</h4>
+              <p>Developing a versatile graph visualization tool with talented colleagues. Blitzboard allows users to create and explore complex graph data through a simple, intuitive interface, bridging data science and visual storytelling.</p>
+              <a href="https://www.blitzboard.io/#Features" target="_blank" class="btn-link">Visit blitzboard.io &rarr;</a>
+            </div>
+          </div>
+
+          <!-- T-regressor -->
+          <div class="card insight-card">
+            <div class="insight-thumb" style="background-image: url('figures/tregressor-gui.png'); background-size: contain; background-color: #0a0f1a;"></div>
+            <div class="insight-content">
+              <h4>T-regressor</h4>
+              <p>A browser-based <strong>AutoML tool</strong> I built for training and deploying regression models entirely client-side, powered by <strong>Pyodide</strong> (Python compiled to WebAssembly) — no server, no data ever leaves your machine. Drop in a CSV, and it automatically compares linear, gradient-boosted tree, Gaussian process, and neural network models to find the best fit, then lets you export a standalone predictor.</p>
+              <a href="https://ks278810.github.io/Tregressor-V2/" target="_blank" class="btn-link">AutoML Tool: T-regressor &rarr;</a>
+            </div>
+          </div>
+
+          <!-- Kaggle -->
+          <div class="card insight-card">
+            <div class="insight-thumb" style="background-image: url('https://images.unsplash.com/photo-1551288049-bebda4e38f71?auto=format&fit=crop&q=80&w=800');"></div>
+            <div class="insight-content">
+              <h4>Kaggle & Data Science</h4>
+              <p>I enjoy testing my machine learning skills against global practitioners. I have earned multiple Silver Medals (Top 1%~4%) in highly competitive fields outside my core domain, such as Mechanisms of Action (MoA) prediction, clinical patient notes scoring, and ion channel switching.</p>
+              <span class="btn-link">Data Competitions</span>
+            </div>
+          </div>
+
+          <!-- Sandbox / Note -->
+          <div class="card insight-card">
+            <div class="insight-thumb" style="background-image: url('https://images.unsplash.com/photo-1455390582262-044cdead277a?auto=format&fit=crop&q=80&w=800');"></div>
+            <div class="insight-content">
+              <h4>AI Sandbox & Creative Insights</h4>
+              <p>I document my creative coding, explorations in Generative AI, and personal tech experiments on note.com. This serves as my sandbox for untethered innovation and creative thoughts.</p>
+              <a href="#" class="btn-link">Read on note.com &rarr;</a>
+            </div>
+          </div>
+
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <!-- Footer -->
+  <footer class="footer">
+    <div class="container footer-content fade-in">
+      <div class="footer-info">
+        <h3>Contact</h3>
+        <p>Cambridge, MA / Boston Area</p>
+        <a href="mailto:mailad4me@gmail.com" class="contact-email">mailad4me@gmail.com</a>
+      </div>
+    </div>
+    <div class="copyright">
+      <p>&copy; 2026 Kohei Shintani. All rights reserved.</p>
+    </div>
+    <button id="backToTop" class="back-to-top" aria-label="Back to top">
+      <svg viewBox="0 0 24 24" width="24" height="24" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round">
+        <polyline points="18 15 12 9 6 15"></polyline>
+      </svg>
+    </button>
+
+    <script src="script.js"></script>
+</body>
+</html>
