@@ -453,7 +453,14 @@ h2.sec::after{
   .timeline li:nth-child(even):hover .timeline__content{transform:translate(-50%,3px);}
 }
 
-/* --- マウス追従スポットライト: カーソル位置に合わせて柔らかい光が動く --- */
+/* --- マウス追従スポットライト: カーソル位置に合わせて柔らかい光が動く（全ページ） --- */
+body::before{
+  content:"";position:fixed;inset:0;z-index:-1;pointer-events:none;
+  opacity:0;transition:opacity 320ms ease-out;
+  background:radial-gradient(340px circle at var(--page-mx,50%) var(--page-my,50%),
+    rgb(90 168 255/12%), rgb(232 148 74/6%) 45%, transparent 72%);
+}
+body.is-spotlight-active::before{opacity:1;}
 .timeline-stage{position:relative;}
 .timeline__glow{
   position:absolute;inset:0;z-index:0;pointer-events:none;
@@ -1123,6 +1130,63 @@ html[data-motion="off"] .scroll-cue{display:none;}
   });
   stage.addEventListener('pointerleave', function () {
     stage.classList.remove('is-active');
+  });
+})();
+
+/* ---------------------------------------------------------------------------
+   1.6) 全ページのマウス追従スポットライト
+        body::before に --page-mx/--page-my を更新し、全ページで微かな光を追従。
+        reduced-motion では無効。
+   --------------------------------------------------------------------------- */
+(function () {
+  'use strict';
+  var body = document.body;
+  var reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  if (reduced) return;
+
+  var raf = null, pendingX = 50, pendingY = 50;
+  function apply() {
+    raf = null;
+    body.style.setProperty('--page-mx', pendingX + '%');
+    body.style.setProperty('--page-my', pendingY + '%');
+  }
+  document.addEventListener('pointermove', function (ev) {
+    pendingX = (ev.clientX / window.innerWidth) * 100;
+    pendingY = (ev.clientY / window.innerHeight) * 100;
+    body.classList.add('is-spotlight-active');
+    if (!raf) raf = requestAnimationFrame(apply);
+  });
+  document.documentElement.addEventListener('pointerleave', function () {
+    body.classList.remove('is-spotlight-active');
+  });
+})();
+
+/* ---------------------------------------------------------------------------
+   1.7) Hobbies カード — 画像クリックで「試してみる」リンクを開く
+        各 .hobby の .hobby__shot をクリック可能にし、同じカード内の
+        .btn-link の href があればそこにナビゲート（新タブで開く）。
+   --------------------------------------------------------------------------- */
+(function () {
+  'use strict';
+  var hobbies = document.querySelectorAll('.hobby');
+  hobbies.forEach(function (hobby) {
+    var img = hobby.querySelector('.hobby__shot');
+    if (!img) return;
+    img.style.cursor = 'pointer';
+    img.setAttribute('role', 'button');
+    img.setAttribute('tabindex', '0');
+    img.addEventListener('click', function () {
+      var link = hobby.querySelector('.btn-link');
+      if (link && link.href) {
+        window.open(link.href, link.getAttribute('target') || '_blank');
+      }
+    });
+    img.addEventListener('keydown', function (ev) {
+      if (ev.key === 'Enter' || ev.key === ' ') {
+        ev.preventDefault();
+        img.click();
+      }
+    });
   });
 })();
 
