@@ -387,7 +387,7 @@ h2.sec::after{
   display:block;font-family:var(--font-mono);font-size:.85rem;
   color:var(--amber-lt);margin-bottom:.35rem;
 }
-.timeline__role{display:block;font-size:1.05rem;color:var(--ink);font-weight:600;}
+.timeline__role{display:block;font-size:1.05rem;color:var(--ink);font-weight:600;transition:color 220ms ease-out;}
 .timeline__org{display:block;font-size:.92rem;color:var(--muted);margin-top:.15rem;}
 @keyframes timelinePulse{
   0%,100%{box-shadow:0 0 0 0 rgb(90 168 255/55%);}
@@ -399,45 +399,57 @@ h2.sec::after{
      上下交互にステム(短い縦線)を伸ばして文字ブロックへつなぐ */
   .timeline{
     display:flex;position:relative;
-    padding:200px 0 180px;margin-top:1rem;
+    padding:190px 0 170px;margin-top:1rem;
   }
   .timeline::before{
-    content:"";position:absolute;left:0;right:0;top:200px;height:1px;
+    content:"";position:absolute;left:0;right:0;top:190px;height:2px;
     background:linear-gradient(90deg,var(--amber),var(--azure) 55%,#FF5FA8);
-    opacity:.55;
+    opacity:1;box-shadow:0 0 8px rgb(90 168 255/35%);
   }
   .timeline li{
     flex:1;min-width:0;position:relative;margin-bottom:0;
-    padding:0;border-radius:0;
+    padding:0;border-radius:0;cursor:pointer;
   }
-  .timeline li:hover{background:none;transform:none;}
+  .timeline li:hover{background:none;}
   /* 各年の点(スパイン上、liローカル座標のtop:0がスパイン位置と一致) */
   .timeline li::before{
     content:"";position:absolute;left:50%;top:0;
     transform:translate(-50%,-50%);
     width:11px;height:11px;border-radius:50%;
     background:var(--bg);border:2px solid var(--azure);z-index:2;
+    transition:transform 220ms var(--ease-sharp),box-shadow 220ms ease-out,background-color 220ms ease-out;
   }
-  .timeline li:hover::before{transform:translate(-50%,-50%) scale(1.3);box-shadow:0 0 12px rgb(90 168 255/60%);}
+  .timeline li:hover::before{
+    transform:translate(-50%,-50%) scale(1.6);
+    background:var(--azure);
+    box-shadow:0 0 0 6px rgb(90 168 255/18%),0 0 16px rgb(90 168 255/70%);
+  }
   /* ステム(点から文字ブロックへの短い縦線) */
   .timeline li::after{
-    content:"";position:absolute;left:50%;width:1px;height:34px;
+    content:"";position:absolute;left:50%;width:1px;height:30px;
     background:var(--line);transform:translateX(-50%);z-index:1;
+    transition:background-color 220ms ease-out,width 220ms ease-out;
   }
+  .timeline li:hover::after{background:var(--azure-lt);width:2px;}
   .timeline__content{
     position:absolute;left:50%;transform:translateX(-50%);
-    width:calc(100% - .8rem);max-width:210px;text-align:center;
+    width:calc(100% - .4rem);max-width:236px;text-align:center;
+    transition:transform 260ms var(--ease-sharp);
   }
+  .timeline li:hover .timeline__content{transform:translate(-50%,-3px);}
+  .timeline li:hover .timeline__role{color:var(--azure-lt);}
   /* 奇数=スパインの上に文字、ステムは点から上へ */
-  .timeline li:nth-child(odd)::after{top:-34px;}
+  .timeline li:nth-child(odd)::after{top:-30px;}
   .timeline li:nth-child(odd) .timeline__content{
-    top:-34px;transform:translate(-50%,-100%);
+    top:-30px;transform:translate(-50%,-100%);
   }
+  .timeline li:nth-child(odd):hover .timeline__content{transform:translate(-50%,calc(-100% - 3px));}
   /* 偶数=スパインの下に文字、ステムは点から下へ */
   .timeline li:nth-child(even)::after{top:0;}
   .timeline li:nth-child(even) .timeline__content{
-    top:34px;
+    top:30px;
   }
+  .timeline li:nth-child(even):hover .timeline__content{transform:translate(-50%,3px);}
 }
 
 /* ==========================================================================
@@ -703,7 +715,7 @@ html[data-motion="off"] .scroll-cue{display:none;}
       <li class="rv-up">
         <div class="timeline__content">
         <span class="timeline__year mono">2011 &ndash; 2014</span>
-        <span class="timeline__role"><span class="i18n-en">Nagoya University, Graduate School of Informatics</span><span class="i18n-ja">名古屋大学 大学院情報科学研究科</span></span>
+        <span class="timeline__role"><span class="i18n-en">Nagoya University</span><span class="i18n-ja">名古屋大学</span></span>
         <span class="timeline__org"><span class="i18n-en">Ph.D. (Information Science)</span><span class="i18n-ja">博士（情報科学）</span></span>
         </div>
       </li>
@@ -718,20 +730,20 @@ html[data-motion="off"] .scroll-cue{display:none;}
         <div class="timeline__content">
         <span class="timeline__year mono">2019 &ndash; 2020</span>
         <span class="timeline__role"><span class="i18n-en">Nagoya University</span><span class="i18n-ja">名古屋大学</span></span>
-        <span class="timeline__org"><span class="i18n-en">Researcher</span><span class="i18n-ja">研究員</span></span>
+        <span class="timeline__org"><span class="i18n-en">Visiting Researcher</span><span class="i18n-ja">Visiting Researcher</span></span>
         </div>
       </li>
       <li class="rv-up">
         <div class="timeline__content">
         <span class="timeline__year mono">2020 &ndash; 2024</span>
-        <span class="timeline__role"><span class="i18n-en">The University of Tokyo, Dept. of Mechanical Engineering</span><span class="i18n-ja">東京大学 機械工学専攻</span></span>
-        <span class="timeline__org"><span class="i18n-en">Researcher</span><span class="i18n-ja">研究員</span></span>
+        <span class="timeline__role"><span class="i18n-en">The University of Tokyo</span><span class="i18n-ja">東京大学</span></span>
+        <span class="timeline__org"><span class="i18n-en">Visiting Researcher</span><span class="i18n-ja">Visiting Researcher</span></span>
         </div>
       </li>
       <li class="rv-up is-current">
         <div class="timeline__content">
         <span class="timeline__year mono"><span class="i18n-en">2024 &ndash; present</span><span class="i18n-ja">2024 &ndash; 現在</span></span>
-        <span class="timeline__role">Toyota Research Institute (TRI)</span>
+        <span class="timeline__role">Toyota Research Institute</span>
         <span class="timeline__org">Technical Advisor</span>
         </div>
       </li>
