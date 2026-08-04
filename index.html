@@ -201,6 +201,14 @@ a{color:var(--azure-lt);}
   animation:heroSheen 44s linear infinite;
   will-change:transform;
 }
+/* マウス追従ダイナミックグロー — Hero内でのカーソル位置に応じた光 */
+.hero__glow-dynamic{
+  position:absolute;inset:0;z-index:1;pointer-events:none;
+  opacity:0;transition:opacity 320ms ease-out;
+  background:radial-gradient(420px circle at var(--hero-mx,50%) var(--hero-my,50%),
+    rgb(90 168 255/18%), rgb(232 148 74/10%) 45%, transparent 72%);
+}
+.hero.is-glow-active .hero__glow-dynamic{opacity:1;}
 @keyframes heroSheen{from{transform:rotate(0deg);}to{transform:rotate(360deg);}}
 /* 微細ドットテクスチャ（静的・深み用） */
 .hero__texture{
@@ -284,7 +292,7 @@ a{color:var(--azure-lt);}
    （旧nowrapは"折り返しが速い/位置が揃わない"指摘の原因だったため撤去） */
 .hero h1{
   font-size:clamp(1.6rem,3vw,2.6rem);
-  line-height:1.3;font-style:italic;margin-bottom:.6em;
+  line-height:1.3;font-style:normal;font-weight:600;letter-spacing:-0.015em;margin-bottom:.6em;
   max-width:38em;
 }
 @media (max-width:680px){
@@ -677,6 +685,7 @@ html[data-motion="off"] .scroll-cue{display:none;}
   <div class="hero__sheen" aria-hidden="true"></div>
   <div class="hero__texture" aria-hidden="true"></div>
   <div class="hero__scrim" aria-hidden="true"></div>
+  <div class="hero__glow-dynamic" aria-hidden="true"></div>
   <!-- 粒子はHero全面。小さなボックスに閉じ込めると、その矩形が「枠」として見えるため -->
   <div class="particle-host" id="heroField" aria-hidden="true"></div>
   <div class="hero__legibility" aria-hidden="true"></div>
@@ -736,7 +745,7 @@ html[data-motion="off"] .scroll-cue{display:none;}
       <li class="rv-up">
         <div class="timeline__content">
         <span class="timeline__year mono">2011 &ndash; 2014</span>
-        <span class="timeline__role"><span class="i18n-en">Nagoya University</span><span class="i18n-ja">名古屋大学</span></span>
+        <span class="timeline__role"><span class="i18n-en">Nagoya University, Graduate School of Informatics</span><span class="i18n-ja">名古屋大学 大学院情報科学研究科</span></span>
         <span class="timeline__org"><span class="i18n-en">Ph.D. (Information Science)</span><span class="i18n-ja">博士（情報科学）</span></span>
         </div>
       </li>
@@ -757,7 +766,7 @@ html[data-motion="off"] .scroll-cue{display:none;}
       <li class="rv-up">
         <div class="timeline__content">
         <span class="timeline__year mono">2020 &ndash; 2024</span>
-        <span class="timeline__role"><span class="i18n-en">The University of Tokyo</span><span class="i18n-ja">東京大学</span></span>
+        <span class="timeline__role"><span class="i18n-en">The University of Tokyo, Graduate School of Engineering</span><span class="i18n-ja">東京大学 大学院工学系研究科</span></span>
         <span class="timeline__org"><span class="i18n-en">Visiting Researcher</span><span class="i18n-ja">Visiting Researcher</span></span>
         </div>
       </li>
@@ -965,7 +974,7 @@ html[data-motion="off"] .scroll-cue{display:none;}
         <div class="hobby__body">
           <h4>T-RAG</h4>
           <p><span class="i18n-en">A secure, offline-first RAG (Retrieval-Augmented Generation) chatbot that runs entirely on CPU without requiring internet connectivity. Designed for enterprises handling sensitive documents that cannot be exposed to external services, T-RAG enables intelligent document retrieval and question-answering while keeping all data and inference local. Perfect for confidential research, proprietary designs, and classified information workflows.</span><span class="i18n-ja">インターネット接続不要で、CPU だけで完全にローカル実行される、セキュアなオフラインRAG（Retrieval-Augmented Generation）チャットボット。外部サービスに公開できない機密文書を扱う企業向けに設計されており、すべてのデータと推論をローカルに保持したまま、インテリジェントなドキュメント検索と質問応答を実現。機密研究、固有技術設計、分類情報ワークフローに最適。</span></p>
-          <span class="btn-link btn-link--muted"><span class="i18n-en">Secure Document AI</span><span class="i18n-ja">セキュア文書AI</span></span>
+          <span class="btn-link btn-link--muted"><span class="i18n-en">Contact</span><span class="i18n-ja">連絡して</span></span>
         </div>
       </article>
 
@@ -1158,6 +1167,37 @@ html[data-motion="off"] .scroll-cue{display:none;}
   });
   document.documentElement.addEventListener('pointerleave', function () {
     body.classList.remove('is-spotlight-active');
+  });
+})();
+
+/* ---------------------------------------------------------------------------
+   1.6b) Hero セクション — マウス追従スポットライト
+        Hero内でのカーソル位置に応じて --hero-mx/--hero-my を更新し、
+        .hero__glow-dynamic で柔らかい光がカーソルを追いかける。
+   --------------------------------------------------------------------------- */
+(function () {
+  'use strict';
+  var hero = document.getElementById('home');
+  if (!hero) return;
+  var reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  if (reduced) return;
+
+  var raf = null, pendingX = 50, pendingY = 50;
+  function apply() {
+    raf = null;
+    hero.style.setProperty('--hero-mx', pendingX + '%');
+    hero.style.setProperty('--hero-my', pendingY + '%');
+  }
+  hero.addEventListener('pointermove', function (ev) {
+    var r = hero.getBoundingClientRect();
+    if (!r.width || !r.height) return;
+    pendingX = ((ev.clientX - r.left) / r.width) * 100;
+    pendingY = ((ev.clientY - r.top) / r.height) * 100;
+    hero.classList.add('is-glow-active');
+    if (!raf) raf = requestAnimationFrame(apply);
+  });
+  hero.addEventListener('pointerleave', function () {
+    hero.classList.remove('is-glow-active');
   });
 })();
 
