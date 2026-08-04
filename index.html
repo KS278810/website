@@ -402,7 +402,8 @@ h2.sec::after{
     padding:190px 0 170px;margin-top:1rem;
   }
   .timeline::before{
-    content:"";position:absolute;left:0;right:0;top:190px;height:2px;
+    content:"";position:absolute;left:0;right:0;top:190px;bottom:auto;
+    width:auto;height:2px;
     background:linear-gradient(90deg,var(--amber),var(--azure) 55%,#FF5FA8);
     opacity:1;box-shadow:0 0 8px rgb(90 168 255/35%);
   }
@@ -451,6 +452,17 @@ h2.sec::after{
   }
   .timeline li:nth-child(even):hover .timeline__content{transform:translate(-50%,3px);}
 }
+
+/* --- マウス追従スポットライト: カーソル位置に合わせて柔らかい光が動く --- */
+.timeline-stage{position:relative;}
+.timeline__glow{
+  position:absolute;inset:0;z-index:0;pointer-events:none;
+  opacity:0;transition:opacity 320ms ease-out;
+  background:radial-gradient(260px circle at var(--mx,50%) var(--my,50%),
+    rgb(90 168 255/20%), rgb(232 148 74/10%) 45%, transparent 72%);
+}
+.timeline-stage.is-active .timeline__glow{opacity:1;}
+.timeline-stage .timeline{position:relative;z-index:1;}
 
 /* ==========================================================================
    reveal — 「隠す」のは JS が武装（arm）したときだけ。
@@ -704,7 +716,9 @@ html[data-motion="off"] .scroll-cue{display:none;}
     <h2 class="sec rv-up"><span class="i18n-en">Career Journey</span><span class="i18n-ja">キャリアの歩み</span></h2>
     <p class="lead rv-up"><span class="i18n-en">Combining hands-on engineering work with parallel research activity at outside research institutions.</span><span class="i18n-ja">エンジニアとしての実務と、社外の研究機関での研究活動を並行して積み重ねてきた。</span></p>
 
-    <ul class="timeline">
+    <div class="timeline-stage" id="careerTimelineStage">
+    <span class="timeline__glow" aria-hidden="true"></span>
+    <ul class="timeline" id="careerTimeline">
       <li class="rv-up">
         <div class="timeline__content">
         <span class="timeline__year mono"><span class="i18n-en">2008 &ndash; present</span><span class="i18n-ja">2008 &ndash; 現在</span></span>
@@ -748,6 +762,7 @@ html[data-motion="off"] .scroll-cue{display:none;}
         </div>
       </li>
     </ul>
+    </div>
   </div>
 </section>
 
@@ -1077,6 +1092,37 @@ html[data-motion="off"] .scroll-cue{display:none;}
       ev.preventDefault();
       t.scrollIntoView({ behavior: reduced ? 'auto' : 'smooth', block: 'start' });
     });
+  });
+})();
+
+/* ---------------------------------------------------------------------------
+   1.5) Career タイムライン — マウス追従スポットライト
+        カーソル位置に応じて --mx/--my を更新し、CSS側の radial-gradient で
+        柔らかい光がカーソルを追いかける。reduced-motion では発火させない。
+   --------------------------------------------------------------------------- */
+(function () {
+  'use strict';
+  var stage = document.getElementById('careerTimelineStage');
+  if (!stage) return;
+  var reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  if (reduced) return;
+
+  var raf = null, pendingX = 50, pendingY = 50;
+  function apply() {
+    raf = null;
+    stage.style.setProperty('--mx', pendingX + '%');
+    stage.style.setProperty('--my', pendingY + '%');
+  }
+  stage.addEventListener('pointermove', function (ev) {
+    var r = stage.getBoundingClientRect();
+    if (!r.width || !r.height) return;
+    pendingX = ((ev.clientX - r.left) / r.width) * 100;
+    pendingY = ((ev.clientY - r.top) / r.height) * 100;
+    stage.classList.add('is-active');
+    if (!raf) raf = requestAnimationFrame(apply);
+  });
+  stage.addEventListener('pointerleave', function () {
+    stage.classList.remove('is-active');
   });
 })();
 
