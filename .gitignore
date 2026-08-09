@@ -1,0 +1,6 @@
+# quality_gate.py が生成する通過マーカー(ローカルの状態であって成果物ではない)
+_gate/
+
+# OS / エディタ
+Thumbs.db
+.DS_Store
