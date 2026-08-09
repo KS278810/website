@@ -353,3 +353,22 @@ D27の3/4正面ビュー（前後輪の遠近感差・フロントガラス分�
 | kaggle のところ最適な図を準備して挿入して | Hobbiesセクション内のKaggleカード（「Kaggle & Data Science」3 Silver Medals）に、SVGで3つのシルバーメダルを描画・挿入。中央のメダルを大きく（半径60）、左右を同サイズ（半径50）にして視覚的なバランスを表現。メダル本体はシルバーグラデーション、上部に金色のリボン、中央に★マーク、ハイライトで立体感を出す。テキスト「KAGGLE — 3 SILVER MEDALS」はSVGの下部に表示。外部画像ファイル不要で、HTML内に直接埋め込んで軽量を保った |
 
 **確認済み**: `node --check`構文OK、`id`重複なし（`medalGrad`・`ribbonGrad`は`<defs>`内に定義、8回参照）。`quality_gate.py`はスクショ未取得FAIL以外の新規リグレッションなし。
+
+## D31. 自作ツール2点の改名にともなうカード更新（2026-08-09）
+
+| 指摘 | 対応 |
+|---|---|
+| ツールを改名したのでサイトの記載を合わせたい | Hobbiesの2枚のカードを更新。**T-regressor → Surrobot**、**T-Oracle → Explorebot**。見出し・本文（英/日）・`alt`・リンク先URLをすべて差し替え。`hobbies.html`側のカードも同様に更新 |
+
+**改名の理由**: "T-Oracle" は Oracle Corporation の商標と衝突しうる名前で、公開配布物としては不利だった。"T-regressor" は一般名詞的で検索性が低い。あわせて `-bot` で揃うファミリー名（Surrobot = surrogate + robot、Explorebot = explore + robot）にし、カード内のマスコット（ロボット）とも整合させた。
+
+**リンク先の変更**:
+
+| 旧 | 新 |
+|---|---|
+| `https://ks278810.github.io/Tregressor-V2/` | `https://ks278810.github.io/surrobot/` |
+| `https://ks278810.github.io/toracle-app/` | `https://ks278810.github.io/explorebot/` |
+
+旧URLは転送を残さず削除する（オーナー判断）。参照元はこのサイトのみと事前調査で確認済みで、いずれもこの更新で新URLに向く。
+
+**未了（実機作業が必要）**: `figures/tregressor-showcase.jpg`・`toracle-showcase.png`・`tregressor-gui.png` の3点は、画面内のロゴが旧ロゴのまま。ツールの動作中画面はヘッドレスブラウザでは撮影できない（Pyodideの初期化が完了せず起動画面で止まる）ため、**実機での撮り直しが必要**。
