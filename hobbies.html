@@ -16,7 +16,8 @@
   <meta property="og:url" content="https://ks278810.github.io/website/hobbies.html">
   <meta property="og:image" content="https://ks278810.github.io/website/figures/surrobot-showcase.png">
   <meta name="twitter:card" content="summary_large_image">
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  <!-- フォントは自己ホスト(_migration/fetch_fonts.py が生成)。外部依存を持たない -->
+  <link rel="stylesheet" href="fonts/fonts.css">
   <link rel="stylesheet" href="style.css">
 </head>
 <body class="bg-light">
@@ -70,7 +71,7 @@
 
           <!-- Kaggle -->
           <div class="card insight-card">
-            <div class="insight-thumb" style="background-image: url('https://images.unsplash.com/photo-1551288049-bebda4e38f71?auto=format&fit=crop&q=80&w=800');"></div>
+            <div class="insight-thumb" style="background-image: image-set(url('figures/kaggle-thumb.webp') type('image/webp'), url('figures/kaggle-thumb.jpg') type('image/jpeg'));"></div>
             <div class="insight-content">
               <h4>Kaggle & Data Science</h4>
               <p>I enjoy testing my machine learning skills against global practitioners. I have earned multiple Silver Medals (Top 1%~4%) in highly competitive fields outside my core domain, such as Mechanisms of Action (MoA) prediction, clinical patient notes scoring, and ion channel switching.</p>
@@ -80,7 +81,7 @@
 
           <!-- Sandbox / Note -->
           <div class="card insight-card">
-            <div class="insight-thumb" style="background-image: url('https://images.unsplash.com/photo-1455390582262-044cdead277a?auto=format&fit=crop&q=80&w=800');"></div>
+            <div class="insight-thumb" style="background-image: image-set(url('figures/sandbox-thumb.webp') type('image/webp'), url('figures/sandbox-thumb.jpg') type('image/jpeg'));"></div>
             <div class="insight-content">
               <h4>AI Sandbox & Creative Insights</h4>
               <p>I document my creative coding, explorations in Generative AI, and personal tech experiments on note.com. This serves as my sandbox for untethered innovation and creative thoughts.</p>

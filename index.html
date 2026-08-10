@@ -19,9 +19,13 @@
 <meta property="og:image:width" content="1200">
 <meta property="og:image:height" content="630">
 <meta name="twitter:card" content="summary_large_image">
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Newsreader:ital,wght@0,400;0,500;0,600;1,400;1,500&family=Noto+Sans+JP:wght@400;500;700&family=Space+Grotesk:wght@400;500;700&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+<!-- フォントは自己ホスト。以前は fonts.googleapis.com / fonts.gstatic.com に
+     依存しており、公開中のツール2つが外部参照ゼロなのにここだけ非対称だった。
+     外部障害で字面が崩れる余地と、閲覧者のIPが第三者へ渡る経路をなくす。
+     Noto Sans JP は unicode-range で分割されたまま取り込んであるので、
+     ブラウザは「そのページに出る文字を含むファイル」しか取りに行かない。
+     更新するときは _migration/fetch_fonts.py を回し直すこと。 -->
+<link rel="stylesheet" href="fonts/fonts.css">
 <style>
 /* ==========================================================================
    Kohei Shintani Portfolio — Motion Rebuild (260801 / rev.3)
