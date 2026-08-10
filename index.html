@@ -5,6 +5,20 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Kohei Shintani | AI Researcher &amp; Vehicle Engineer</title>
 <meta name="description" content="Kohei Shintani — AI Researcher and Vehicle Engineer bridging automotive engineering and machine learning. Technical Advisor at Toyota Research Institute. 60 publications, 11 awards, 9 patents.">
+<link rel="icon" href="figures/favicon.ico" sizes="16x16 32x32 48x48 64x64 128x128 256x256">
+<link rel="apple-touch-icon" href="figures/apple-touch-icon.png">
+<meta name="theme-color" content="#0A0B10">
+<link rel="canonical" href="https://ks278810.github.io/website/">
+<!-- SNS共有カード。og:image は絶対URLでないと展開されない -->
+<meta property="og:type" content="profile">
+<meta property="og:site_name" content="Kohei Shintani">
+<meta property="og:title" content="Kohei Shintani | AI Researcher &amp; Vehicle Engineer">
+<meta property="og:description" content="機械学習と自動車工学をつなぐ研究者。60本の論文、11の受賞、9件の特許。ブラウザだけで動く自作の機械学習ツールも公開しています。">
+<meta property="og:url" content="https://ks278810.github.io/website/">
+<meta property="og:image" content="https://ks278810.github.io/website/figures/ogp.png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta name="twitter:card" content="summary_large_image">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Newsreader:ital,wght@0,400;0,500;0,600;1,400;1,500&family=Noto+Sans+JP:wght@400;500;700&family=Space+Grotesk:wght@400;500;700&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
@@ -558,6 +572,10 @@ body.is-spotlight-active::before{opacity:1;}
     #090A11;
   overflow:hidden;
 }
+/* WebP を優先し PNG にフォールバックさせるため <picture> で包む。
+   picture 自体はボックスを作らせない（.hobby__shot の絶対配置は
+   .hobby__figure を基準にしたままにする） */
+.hobby__figure picture{display:contents;}
 .hobby__shot{
   position:absolute;inset:0;width:100%;height:100%;
   object-fit:contain;              /* 画像を切らない（実測で上下が切れていた） */
@@ -936,7 +954,10 @@ html[data-motion="off"] .scroll-cue{display:none;}
 
       <article class="hobby">
         <div class="hobby__figure">
-          <img class="hobby__shot" src="figures/showcase1.png" alt="Blitzboard のグラフ可視化画面" width="722" height="454" loading="lazy">
+          <picture>
+            <source srcset="figures/showcase1.webp" type="image/webp">
+            <img class="hobby__shot" src="figures/showcase1.png" alt="Blitzboard のグラフ可視化画面" width="722" height="454" loading="lazy">
+          </picture>
         </div>
         <div class="hobby__body">
           <h4>Blitzboard</h4>
@@ -947,7 +968,10 @@ html[data-motion="off"] .scroll-cue{display:none;}
 
       <article class="hobby">
         <div class="hobby__figure">
-          <img class="hobby__shot" src="figures/surrobot-showcase.png" alt="Surrobot の AutoML 画面（CSVドロップ→学習→精度評価→デプロイ）" width="1360" height="902" loading="lazy">
+          <picture>
+            <source srcset="figures/surrobot-showcase.webp" type="image/webp">
+            <img class="hobby__shot" src="figures/surrobot-showcase.png" alt="Surrobot の AutoML 画面（CSVドロップ→学習→精度評価→デプロイ）" width="1360" height="902" loading="lazy">
+          </picture>
         </div>
         <div class="hobby__body">
           <h4>Surrobot</h4>
@@ -958,7 +982,10 @@ html[data-motion="off"] .scroll-cue{display:none;}
 
       <article class="hobby">
         <div class="hobby__figure">
-          <img class="hobby__shot" src="figures/explorebot-showcase.png" alt="Explorebot のBayesian Active Learning画面（等高線ヒートマップ・パラレルコーディネート・最適解探索）" width="1360" height="905" loading="lazy">
+          <picture>
+            <source srcset="figures/explorebot-showcase.webp" type="image/webp">
+            <img class="hobby__shot" src="figures/explorebot-showcase.png" alt="Explorebot のBayesian Active Learning画面（等高線ヒートマップ・パラレルコーディネート・最適解探索）" width="1360" height="905" loading="lazy">
+          </picture>
         </div>
         <div class="hobby__body">
           <h4>Explorebot</h4>
@@ -969,7 +996,12 @@ html[data-motion="off"] .scroll-cue{display:none;}
 
       <article class="hobby">
         <div class="hobby__figure">
-          <img class="hobby__shot" src="figures/trag-logo.png" alt="T-RAG - Secure Offline RAG Chatbot" width="1363" height="902" loading="lazy">
+          <picture>
+            <source srcset="figures/trag-logo.webp" type="image/webp">
+            <!-- width/height は実寸(1004x786)。以前 1363x902 と書かれており、
+                 ブラウザが確保する領域の縦横比が実画像とずれていた -->
+            <img class="hobby__shot" src="figures/trag-logo.png" alt="T-RAG - Secure Offline RAG Chatbot" width="1004" height="786" loading="lazy">
+          </picture>
         </div>
         <div class="hobby__body">
           <h4>T-RAG</h4>
@@ -986,7 +1018,10 @@ html[data-motion="off"] .scroll-cue{display:none;}
     <div>
       <p class="en" style="letter-spacing:.1em;color:var(--ink);margin:0 0 .3rem;"><span class="i18n-en">Contact</span><span class="i18n-ja">連絡先</span></p>
       <p style="margin:0;">Cambridge, MA / Boston Area</p>
-      <p style="margin:.2rem 0 0;"><a href="mailto:mailad4me@gmail.com">mailad4me@gmail.com</a></p>
+      <!-- @ と . は数値文字参照にしてある。ブラウザは通常どおり解釈するが、
+     ソースを正規表現で走査するだけの収集ボットにはマッチしない。
+     戻すときはスパム流入とのトレードオフを承知のうえで。 -->
+<p style="margin:.2rem 0 0;"><a href="mailto:mailad4me&#64;gmail&#46;com">mailad4me&#64;gmail&#46;com</a></p>
     </div>
     <p class="en" style="letter-spacing:.1em;">&copy; 2026 Kohei Shintani</p>
   </div>
