@@ -372,3 +372,18 @@ D27の3/4正面ビュー（前後輪の遠近感差・フロントガラス分�
 旧URLは転送を残さず削除する（オーナー判断）。参照元はこのサイトのみと事前調査で確認済みで、いずれもこの更新で新URLに向く。
 
 **未了（実機作業が必要）**: `figures/tregressor-showcase.jpg`・`toracle-showcase.png`・`tregressor-gui.png` の3点は、画面内のロゴが旧ロゴのまま。ツールの動作中画面はヘッドレスブラウザでは撮影できない（Pyodideの初期化が完了せず起動画面で止まる）ため、**実機での撮り直しが必要**。
+
+## D32. Explorebot → BayesRobo 改名、統計初期値・フッター・Hero導線・旧ページ整理（GitHub公開プロフィール査読対応・2026-09-24）
+
+| 指摘 | 対応 |
+|---|---|
+| ツールを改名した（explorebot リポジトリ → bayesrobo リポジトリへ移行済み） | index.html のカードを更新。見出し・本文（英/日）・`alt`・リンク先URL（`ks278810.github.io/bayesrobo/`）を差し替え。`figures/explorebot-showcase.*` はファイル名・中身とも据え置き |
+| 統計カウンター（Publications/Awards/Patents）がJS実行前は"0"表示 | 静止HTMLの初期値を実数（60 / 11 / 9、うちAwards/Patentsはリスト実要素数と一致することを確認済み）に変更。カウントアップ演出（0→実数）はJS側で従来どおり動作 |
+| フッターが所在地とメールのみで、`00_product-spec.md` §⑨ の必須項目（LinkedIn/ResearchGate/副次導線）と乖離 | フッターに LinkedIn・ResearchGate・GitHub の3リンクを追加 |
+| ヒーローに連絡導線が無い | `hero__intro` 直下に控えめなテキストリンク「Connect on LinkedIn →」を1本追加（ボタン化はせず、サイトの中立姿勢を保つ） |
+| JSON-LD Person schema・hreflang が未実装 | `<head>` に Person JSON-LD（sameAs: LinkedIn/ResearchGate/GitHub）と hreflang（en/ja/x-default、いずれも同一URL）を追加 |
+| `research.html` / `hobbies.html` が index.html と別建てのまま生存し、sitemap.xml に掲載中 | 両ファイルを `noindex` + `canonical` + `meta refresh` によるリダイレクトスタブに置き換え、`sitemap.xml` から2件削除 |
+
+**旧URLは転送を残さず削除**（D31と同じ方針）ではなく、今回は**旧ファイルにリダイレクトスタブを残す**（research.html/hobbies.html はコンテンツを持つ独立ページとして外部リンクされている可能性を排除できないため）。
+
+**未了**: `figures/explorebot-showcase.*` の画面内ロゴ・文言は旧ツール名のまま（D31同様、実機での撮り直しが必要）。Publications「60」件とResearchGate側の登録数が一致するかは本人確認待ち。
